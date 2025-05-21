@@ -13,6 +13,14 @@ spring:
         git:
           uri: https://github.com/SelimHorri/cloud-config-server
           clone-on-start: true
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE:http://service-discovery-container/eureka%7D
+  instance:
+    hostname: ${EUREKA_INSTANCE:localhost}
 
 resilience4j:
   circuitbreaker:
