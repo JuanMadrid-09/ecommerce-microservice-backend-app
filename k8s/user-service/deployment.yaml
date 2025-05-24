@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: micsvcwsacr.azurecr.io/user-service:1
+          image: juanmadrid09/user-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8700

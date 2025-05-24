@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: cloud-config
-        image: micsvcwsacr.azurecr.io/cloud-config:PLACEHOLDER_TAG
+        image: juanmadrid09/cloud-config:latest
         ports:
         - containerPort: 9296
         resources:

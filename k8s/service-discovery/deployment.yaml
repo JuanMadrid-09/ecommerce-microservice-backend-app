@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: service-discovery
-        image: micsvcwsacr.azurecr.io/service-discovery:PLACEHOLDER_TAG
+        image: juanmadrid09/service-discovery:latest
         ports:
         - containerPort: 8761
         resources:

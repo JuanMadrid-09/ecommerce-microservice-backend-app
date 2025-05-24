@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: shipping-service
-          image: micsvcwsacr.azurecr.io/shipping-service:1
+          image: juanmadrid09/shipping-service:latest
           imagePullPolicy: IfNotPresent 
           ports:
             - containerPort: 8600

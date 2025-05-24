@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: favourite-service
-        image: micsvcwsacr.azurecr.io/favourite-service:1
+        image: juanmadrid09/favourite-service:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8800
