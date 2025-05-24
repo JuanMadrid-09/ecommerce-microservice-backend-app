@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
   name: favourite-service
 #  namespace: ecommerce-app
+
   labels:
     app: favourite-service
 spec:
