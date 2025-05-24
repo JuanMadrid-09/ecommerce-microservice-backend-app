@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-config
+  labels:
+    app: cloud-config
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloud-config
+  template:
+    metadata:
+      labels:
+        app: cloud-config
+    spec:
+      containers:
+      - name: cloud-config
+        image: micsvcwsacr.azurecr.io/cloud-config:PLACEHOLDER_TAG
+        ports:
+        - containerPort: 9296
+        resources:
+          limits:
+            memory: "384Mi"
+            cpu: "250m"
+          requests:
+            memory: "256Mi"
+            cpu: "50m"
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "kubernetes"
+        - name: SPRING_APPLICATION_NAME
+          value: "CLOUD-CONFIG"
+        - name: SERVER_PORT
+          value: "9296"
+        - name: SPRING_ZIPKIN_BASE_URL
+          value: "http://zipkin-service:9411/"
+        - name: SPRING_ZIPKIN_ENABLED
+          value: "false"
+        - name: SPRING_CLOUD_CONFIG_ENABLED
+          value: "true"
+        - name: SPRING_CLOUD_CONFIG_IMPORT_CHECK_ENABLED
+          value: "false"
+        - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+          value: "false"
+        - name: EUREKA_CLIENT_FETCH_REGISTRY
+          value: "false"
+        - name: SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START
+          value: "true"
+        - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          value: "*"
+        - name: MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED
+          value: "true"
+        - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+          value: "always"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9296
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9296
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          timeoutSeconds: 5

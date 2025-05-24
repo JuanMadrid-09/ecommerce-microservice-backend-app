@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: ecommerce-app
+  labels:
+    app: user-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: micsvcwsacr.azurecr.io/user-service:1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8700
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "350m"
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev"
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION # Para cargar user-service.properties y common-services.properties
+              value: "file:/app/config/"
+
+            # --- Configuración de Eureka ESENCIAL ---
+            - name: EUREKA_CLIENT_ENABLED
+              value: "true"
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE # ¡AÑADIR ESTA EXPLÍCITAMENTE!
+              value: "http://service-discovery:8761/eureka/"
+            # Las propiedades eureka.client.register-with-eureka=true y eureka.client.fetch-registry=true
+            # se leerán de common-services.properties una vez que el cliente esté habilitado y tenga la URL correcta.
+            # No es necesario SPRING_CLOUD_SERVICE_REGISTRY_AUTO_REGISTRATION_ENABLED si no es para ponerlo en false.
+
+            # --- Configuración de Zipkin ---
+            - name: SPRING_ZIPKIN_BASE_URL # Heredado de common-services.properties si no se pone aquí
+              value: "http://zipkin-service:9411"
+            - name: SPRING_ZIPKIN_ENABLED
+              value: "true" # Asegúrate que sea true
+
+            # --- Configuración de Spring Cloud Config ---
+            # Se leerán de common-services.properties si no se anulan aquí
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:http://cloud-config:9296"
+            - name: SPRING_CLOUD_CONFIG_URI
+              value: "http://cloud-config:9296"
+            - name: SPRING_CLOUD_CONFIG_ENABLED
+              value: "true"
+            - name: SPRING_CLOUD_CONFIG_IMPORT_CHECK_ENABLED
+              value: "false"
+
+            # SPRING_APPLICATION_NAME, SERVER_PORT, SERVER_SERVLET_CONTEXT_PATH
+            # se leerán de /app/config/user-service.properties (gracias a SPRING_CONFIG_ADDITIONAL_LOCATION)
+            
+            # MANAGEMENT_* se leerán de common-services.properties
+
+            - name: SPRING_CLOUD_REFRESH_ENABLED
+              value: "false"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dspring.cloud.loadbalancer.ribbon.enabled=false"
+
+          volumeMounts:
+            - name: common-config-volume
+              mountPath: /app/config
+          # ... (probes sin cambios) ...
+      volumes:
+        - name: common-config-volume
+          configMap:
+            name: common-config
+            items:
+              - key: "common-services.properties"
+                path: "common-services.properties"
+              - key: "user-service.properties"
+                path: "user-service.properties"

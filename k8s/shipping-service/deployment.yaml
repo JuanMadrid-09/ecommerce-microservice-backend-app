@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipping-service
+  namespace: ecommerce-app
+  labels:
+    app: shipping-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shipping-service
+  template:
+    metadata:
+      labels:
+        app: shipping-service
+    spec:
+      containers:
+        - name: shipping-service
+          image: micsvcwsacr.azurecr.io/shipping-service:1
+          imagePullPolicy: IfNotPresent 
+          ports:
+            - containerPort: 8600
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "80m"
+            limits:
+              memory: "384Mi"
+              cpu: "250m"
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev"
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:/app/config/"
+            - name: SPRING_ZIPKIN_BASE_URL
+              value: "http://zipkin-service:9411"
+            - name: SPRING_ZIPKIN_ENABLED
+              value: "true"
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:http://cloud-config:9296"
+            - name: SPRING_CLOUD_CONFIG_URI
+              value: "http://cloud-config:9296"
+            - name: SPRING_CLOUD_CONFIG_ENABLED
+              value: "true"
+            - name: SPRING_CLOUD_CONFIG_IMPORT_CHECK_ENABLED
+              value: "false"
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: "http://service-discovery:8761/eureka/"
+            - name: SPRING_APPLICATION_NAME
+              value: "SHIPPING-SERVICE"
+            - name: SERVER_PORT
+              value: "8600"
+            - name: SERVER_SERVLET_CONTEXT_PATH
+              value: "/shipping-service"
+            # Variables adicionales para base de datos
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:h2:mem:ecommerce_dev_db;DB_CLOSE_ON_EXIT=FALSE"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "sa"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: ""
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "*"
+            - name: MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+              value: "always"
+            # Variables para estabilizar la inicialización
+            - name: SPRING_CLOUD_REFRESH_ENABLED
+              value: "false"
+          
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dspring.cloud.loadbalancer.ribbon.enabled=false"
+          volumeMounts:
+            - name: common-config-volume
+              mountPath: /app/config
+          startupProbe:
+            httpGet:
+              path: /shipping-service/actuator/health
+              port: 8600
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 20
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /shipping-service/actuator/health/liveness
+              port: 8600
+            initialDelaySeconds: 240
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 8
+          readinessProbe:
+            httpGet:
+              path: /shipping-service/actuator/health/readiness
+              port: 8600
+            initialDelaySeconds: 240
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 8
+      volumes:
+        - name: common-config-volume
+          configMap:
+            name: common-config
+            items:
+              - key: "common-services.properties"
+                path: "common-services.properties"
+              - key: "shipping-service.properties"
+                path: "shipping-service.properties" 

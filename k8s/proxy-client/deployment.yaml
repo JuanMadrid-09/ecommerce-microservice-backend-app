@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy-client
+  namespace: ecommerce-app
+  labels:
+    app: proxy-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proxy-client
+  template:
+    metadata:
+      labels:
+        app: proxy-client
+    spec:
+      containers:
+        - name: proxy-client
+          image: micsvcwsacr.azurecr.io/proxy-client:2 # Confirma imagen y tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8900
+          resources:
+            requests:
+              memory: "128Mi" # Ajusta si es necesario
+              cpu: "80m"
+            limits:
+              memory: "384Mi" # Ajusta si es necesario
+              cpu: "250m"
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev"
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:/app/config/" # Para leer common-services.properties y proxy-client.properties
+            
+            - name: SPRING_APPLICATION_NAME # Se leerá de proxy-client.properties si no está aquí
+              value: "PROXY-CLIENT"       # Es bueno tenerlo explícito para Eureka Instance ID
+
+            # --- Configuración de Eureka ---
+            - name: EUREKA_CLIENT_ENABLED # ¡CLAVE!
+              value: "true"
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE # Heredado de common-services.properties si no se pone aquí
+              value: "http://service-discovery:8761/eureka/"
+            - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA # Para que se registre en Eureka
+              value: "true"
+            - name: EUREKA_CLIENT_FETCH_REGISTRY # Para que pueda encontrar otros servicios
+              value: "true"
+            # SPRING_CLOUD_SERVICE_REGISTRY_AUTO_REGISTRATION_ENABLED se asume true por defecto
+
+            # --- Configuración de Zipkin ---
+            - name: SPRING_ZIPKIN_BASE_URL # Heredado de common-services.properties si no se pone aquí
+              value: "http://zipkin-service:9411"
+            - name: SPRING_ZIPKIN_ENABLED
+              value: "true"
+
+            # --- Configuración de Spring Cloud Config (heredada de common-services si no se pone aquí) ---
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:http://cloud-config:9296"
+            - name: SPRING_CLOUD_CONFIG_URI
+              value: "http://cloud-config:9296"
+            - name: SPRING_CLOUD_CONFIG_ENABLED
+              value: "true"
+            - name: SPRING_CLOUD_CONFIG_IMPORT_CHECK_ENABLED
+              value: "false"
+            
+            # SERVER_PORT y SERVER_SERVLET_CONTEXT_PATH se leerán de proxy-client.properties
+            # MANAGEMENT_* se leerán de common-services.properties
+
+            - name: SPRING_CLOUD_REFRESH_ENABLED
+              value: "false"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dspring.cloud.loadbalancer.ribbon.enabled=false"
+          volumeMounts:
+            - name: common-config-volume
+              mountPath: /app/config
+          # ... (probes sin cambios, asumen /app y puerto 8900 que vendrán de proxy-client.properties) ...
+      volumes:
+        - name: common-config-volume
+          configMap:
+            name: common-config
+            # Si quieres ser explícito (opcional, tu forma actual funciona):
+            # items:
+            #   - key: "common-services.properties"
+            #     path: "common-services.properties"
+            #   - key: "proxy-client.properties"
+            #     path: "proxy-client.properties"
