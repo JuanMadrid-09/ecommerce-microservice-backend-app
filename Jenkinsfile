@@ -291,7 +291,7 @@ def generateReleaseNotes() {
         // Get recent commits (Windows compatible)
         def recentCommits = ""
         try {
-            recentCommits = bat(returnStdout: true, script: 'git log --oneline --since="3 days ago" | head -10').trim()
+           recentCommits = bat(returnStdout: true, script: 'git log --oneline --since="3 days ago" -n 10').trim()
             if (!recentCommits) {
                 recentCommits = "No recent commits found in the last 3 days"
             }
