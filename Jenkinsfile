@@ -43,21 +43,6 @@ pipeline {
             }
         }
 
-        stage('Check Kubernetes Context') {
-            steps {
-                bat '''
-                echo Verifying kubectl context...
-                kubectl config current-context
-                kubectl cluster-info
-                '''
-            }
-        }
-
-
-        
-
-
-
         stage('Verify Tools') {
                     steps {
                         bat 'java -version'
