@@ -167,7 +167,7 @@ pipeline {
             when { branch 'master' }
             steps {
                 withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
-                    bat "echo ${password} | docker login -u ${DOCKERHUB_USER} --password-stdin"
+                    bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
                     script {
                         SERVICES.split().each { service ->
                             bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
