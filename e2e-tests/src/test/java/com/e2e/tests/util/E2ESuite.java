@@ -67,7 +67,7 @@ public class E2ESuite {
                     .withEnv("EUREKA_INSTANCE", "cloud-config-container")
                     .waitingFor(Wait.forHttp("/actuator/health").forStatusCode(200));
 
-            userServiceContainer = new GenericContainer<>("juanmadrid/user-service:latest")
+            userServiceContainer = new GenericContainer<>("juanmadrid09/user-service:latest")
                     .withNetwork(network)
                     .withNetworkAliases("user-service-container")
                     .withExposedPorts(8700)
