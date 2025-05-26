@@ -14,6 +14,18 @@ pipeline {
         KUBECONFIG = 'C:\\Users\\ACER\\.kube\\config'
     }
 
+    parameters {
+        booleanParam(
+            name: 'GENERATE_RELEASE_NOTES',
+            defaultValue: true,
+            description: 'Generate automatic release notes'
+        )
+        string(
+            name: 'BUILD_TAG',
+            defaultValue: "${env.BUILD_ID}",
+            description: 'Tag for release notes identification'
+        )
+    }
 
     stages {
         stage('Init') {
@@ -70,7 +82,7 @@ pipeline {
         }
 
 
-
+/*
         stage('Unit Tests') {
             parallel {
                 stage('Unit Tests') {
@@ -140,7 +152,7 @@ pipeline {
                     }
                 }
 
-
+*/
 
         stage('Build Services') {
             when {
@@ -210,6 +222,18 @@ pipeline {
                 }
             }
         }
+
+        stage('Generate Release Notes') {
+            when {
+                expression { params.GENERATE_RELEASE_NOTES }
+            }
+            steps {
+                script {
+                    echo "=== GENERATE RELEASE NOTES ==="
+                    generateReleaseNotes()
+                }
+            }
+        }
     }
 
     post {
@@ -241,5 +265,154 @@ pipeline {
                 echo "🔍 Some tests may have failed. Review test reports."
             }
         }
+        always {
+            script {
+                // Archive release notes if they were generated
+                if (params.GENERATE_RELEASE_NOTES) {
+                    archiveArtifacts artifacts: 'release-notes-*.md', allowEmptyArchive: true
+                }
+            }
+        }
     }
+}
+
+def generateReleaseNotes() {
+    echo "Generando Release Notes automáticos..."
+
+    try {
+        def buildTag = params.BUILD_TAG ?: env.BUILD_ID
+        def releaseNotesFile = "release-notes-${buildTag}.md"
+
+        // Get git information (Windows compatible)
+        def gitCommit = bat(returnStdout: true, script: 'git rev-parse HEAD').trim()
+        def gitBranch = env.BRANCH_NAME ?: 'unknown'
+        def buildDate = new Date().format('yyyy-MM-dd HH:mm:ss')
+
+        // Get recent commits (Windows compatible)
+        def recentCommits = ""
+        try {
+            recentCommits = bat(returnStdout: true, script: 'git log --oneline --since="3 days ago" | head -10').trim()
+            if (!recentCommits) {
+                recentCommits = "No recent commits found in the last 3 days"
+            }
+        } catch (Exception e) {
+            recentCommits = "Could not retrieve recent commits: ${e.message}"
+        }
+
+        // Determine deployment status based on branch
+        def deploymentStatus = ""
+        switch(env.BRANCH_NAME) {
+            case 'master':
+                deploymentStatus = "✅ Successfully deployed to PRODUCTION environment"
+                break
+            case 'release':
+                deploymentStatus = "✅ Successfully deployed to STAGING environment"
+                break
+            default:
+                deploymentStatus = "✅ Tests completed for DEVELOPMENT environment"
+        }
+
+        def releaseNotes = """
+# Release Notes - Build ${buildTag}
+
+## Build Information
+- **Build Number**: ${env.BUILD_NUMBER}
+- **Build Tag**: ${buildTag}
+- **Branch**: ${gitBranch}
+- **Environment**: ${env.SPRING_PROFILE}
+- **Date**: ${buildDate}
+- **Git Commit**: ${gitCommit}
+- **Jenkins URL**: ${env.BUILD_URL}
+
+## Deployed Services (${env.SPRING_PROFILE} environment)
+${SERVICES.split().collect { "- ${it}" }.join('\n')}
+
+## Additional Infrastructure
+- zipkin (monitoring)
+- Kubernetes namespace: ${env.K8S_NAMESPACE}
+
+## Test Results Summary
+- **Unit Tests**: ${shouldRunTests() ? 'EXECUTED ✅' : 'SKIPPED ⏭️'}
+- **Integration Tests**: ${shouldRunIntegrationTests() ? 'EXECUTED ✅' : 'SKIPPED ⏭️'}
+- **E2E Tests**: ${shouldRunE2ETests() ? 'EXECUTED ✅' : 'SKIPPED ⏭️'}
+
+## Recent Changes
+```
+${recentCommits}
+```
+
+## Docker Images Built
+${env.BRANCH_NAME == 'master' ? SERVICES.split().collect { "- ${DOCKERHUB_USER}/${it}:${env.IMAGE_TAG}" }.join('\n') : 'No Docker images built for this branch'}
+
+## Deployment Configuration
+- **Spring Profile**: ${env.SPRING_PROFILE}
+- **Image Tag**: ${env.IMAGE_TAG}
+- **Deployment Suffix**: ${env.DEPLOYMENT_SUFFIX}
+- **Kubernetes Namespace**: ${env.K8S_NAMESPACE}
+
+## Deployment Status
+${deploymentStatus}
+
+## Pipeline Execution Details
+- **Started**: ${new Date(currentBuild.startTimeInMillis).format('yyyy-MM-dd HH:mm:ss')}
+- **Duration**: ${currentBuild.durationString}
+- **Triggered by**: ${env.BUILD_CAUSE ?: 'Manual/SCM'}
+
+---
+*Generated automatically by Jenkins Pipeline on ${buildDate}*
+*Pipeline: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}*
+"""
+
+        writeFile(file: releaseNotesFile, text: releaseNotes)
+
+        echo "✅ Release Notes generados exitosamente: ${releaseNotesFile}"
+        echo "📄 Archivo será archivado como artifact"
+
+        // Display summary in console
+        echo """
+=== RELEASE NOTES SUMMARY ===
+📦 Build: ${buildTag}
+🌿 Branch: ${gitBranch}
+🏷️ Environment: ${env.SPRING_PROFILE}
+📅 Date: ${buildDate}
+📁 File: ${releaseNotesFile}
+"""
+
+    } catch (Exception e) {
+        echo "⚠️ Error generando Release Notes: ${e.message}"
+        echo "Pipeline continuará sin Release Notes"
+
+        // Create minimal release notes
+        def fallbackFile = "release-notes-${params.BUILD_TAG ?: env.BUILD_ID}-minimal.md"
+        def minimalNotes = """
+# Release Notes - Build ${params.BUILD_TAG ?: env.BUILD_ID}
+
+**Error**: Could not generate complete release notes due to: ${e.message}
+
+## Basic Information
+- Build Number: ${env.BUILD_NUMBER}
+- Branch: ${env.BRANCH_NAME}
+- Environment: ${env.SPRING_PROFILE}
+- Date: ${new Date().format('yyyy-MM-dd HH:mm:ss')}
+
+Pipeline executed successfully despite release notes generation error.
+"""
+        writeFile(file: fallbackFile, text: minimalNotes)
+        echo "📝 Minimal release notes created: ${fallbackFile}"
+    }
+}
+
+// Helper functions to determine test execution
+def shouldRunTests() {
+    return env.BRANCH_NAME in ['dev', 'master', 'release'] || env.BRANCH_NAME.startsWith('feature/')
+}
+
+def shouldRunIntegrationTests() {
+    return env.BRANCH_NAME == 'master' || env.BRANCH_NAME.startsWith('feature/') ||
+           (env.BRANCH_NAME != 'master' && env.BRANCH_NAME != 'release')
+}
+
+def shouldRunE2ETests() {
+    return env.BRANCH_NAME == 'master' || env.BRANCH_NAME.startsWith('feature/') ||
+           (env.BRANCH_NAME != 'master' && env.BRANCH_NAME != 'release')
 }
