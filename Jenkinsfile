@@ -14,8 +14,6 @@ pipeline {
     }
 
 
-
-
     stages {
         stage('Init') {
             steps {
@@ -46,15 +44,17 @@ pipeline {
         }
 
         stage('Check Kubernetes Context') {
-                    steps {
-                        bat '''
-                        echo Verifying kubectl context...
-                        kubectl config current-context
-                        kubectl cluster-info
-                        '''
-                    }
-                }
+            steps {
+                bat '''
+                echo Verifying kubectl context...
+                kubectl config current-context
+                kubectl cluster-info
+                '''
+            }
+        }
 
+
+        
 
 
 
