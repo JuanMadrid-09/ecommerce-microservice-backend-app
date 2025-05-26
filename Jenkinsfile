@@ -69,7 +69,7 @@ pipeline {
             }
         }
 
-/*
+
 
         stage('Unit Tests') {
             parallel {
@@ -140,7 +140,7 @@ pipeline {
                     }
                 }
 
-*/
+
 
         stage('Build Services') {
             when {
