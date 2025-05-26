@@ -49,7 +49,7 @@ public class E2ESuite {
                     .withExposedPorts(9411)
                     .waitingFor(Wait.forHttp("/").forStatusCode(200));
 
-            serviceDiscoveryContainer = new GenericContainer<>("selimhorri/service-discovery-ecommerce-boot:0.1.0")
+            serviceDiscoveryContainer = new GenericContainer<>("juanmadrid09/service-discovery:latest")
                     .withNetwork(network)
                     .withNetworkAliases("service-discovery-container")
                     .withExposedPorts(8761)
@@ -57,7 +57,7 @@ public class E2ESuite {
                     .withEnv("SPRING_ZIPKIN_BASE_URL", "http://zipkin-container:9411")
                     .waitingFor(Wait.forHttp("/actuator/health").forStatusCode(200));
 
-            cloudConfigContainer = new GenericContainer<>("cloud-config:0.1.0")
+            cloudConfigContainer = new GenericContainer<>("juanmadrid09/cloud-config:latest")
                     .withNetwork(network)
                     .withNetworkAliases("cloud-config-container")
                     .withExposedPorts(9296)
@@ -67,7 +67,7 @@ public class E2ESuite {
                     .withEnv("EUREKA_INSTANCE", "cloud-config-container")
                     .waitingFor(Wait.forHttp("/actuator/health").forStatusCode(200));
 
-            userServiceContainer = new GenericContainer<>("user-service:0.1.0")
+            userServiceContainer = new GenericContainer<>("juanmadrid/user-service:latest")
                     .withNetwork(network)
                     .withNetworkAliases("user-service-container")
                     .withExposedPorts(8700)
@@ -79,7 +79,7 @@ public class E2ESuite {
                     .waitingFor(Wait.forHttp("/user-service/actuator/health").forStatusCode(200))
                     .withStartupTimeout(Duration.ofMinutes(3));
 
-            productServiceContainer = new GenericContainer<>("product-service:0.1.0")
+            productServiceContainer = new GenericContainer<>("juanmadrid09/product-service:latest")
                     .withNetwork(network)
                     .withNetworkAliases("product-service-container")
                     .withExposedPorts(8500)
@@ -91,7 +91,7 @@ public class E2ESuite {
                     .waitingFor(Wait.forHttp("/product-service/actuator/health").forStatusCode(200))
                             .withStartupTimeout(Duration.ofMinutes(3));
 
-            orderServiceContainer = new GenericContainer<>("order-service:0.1.0")
+            orderServiceContainer = new GenericContainer<>("juanmadrid09/order-service:latest")
                     .withNetwork(network)
                     .withNetworkAliases("order-service-container")
                     .withExposedPorts(8300)
@@ -103,7 +103,7 @@ public class E2ESuite {
                     .waitingFor(Wait.forHttp("/order-service/actuator/health").forStatusCode(200))
                             .withStartupTimeout(Duration.ofMinutes(3));
 
-            paymentServiceContainer = new GenericContainer<>("payment-service:0.1.0")
+            paymentServiceContainer = new GenericContainer<>("juanmadrid09/payment-service:latest")
                     .withNetwork(network)
                     .withNetworkAliases("payment-service-container")
                     .withExposedPorts(8400)
@@ -115,7 +115,7 @@ public class E2ESuite {
                     .waitingFor(Wait.forHttp("/payment-service/actuator/health").forStatusCode(200))
                             .withStartupTimeout(Duration.ofMinutes(3));
 
-            favouriteServiceContainer = new GenericContainer<>("favourite-service:0.1.0")
+            favouriteServiceContainer = new GenericContainer<>("juanmadrid09/favourite-service:latest")
                     .withNetwork(network)
                     .withNetworkAliases("favourite-service-container")
                     .withExposedPorts(8800)
