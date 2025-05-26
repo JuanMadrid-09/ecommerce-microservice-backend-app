@@ -45,13 +45,7 @@ pipeline {
             }
         }
 
-        stage('Debug kubeconfig') {
-            steps {
-                bat 'echo %KUBECONFIG%'
-                bat 'kubectl config current-context'
-                bat 'kubectl get nodes'
-            }
-        }
+
 
 
         stage('Verify Tools') {
