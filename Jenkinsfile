@@ -13,6 +13,9 @@ pipeline {
         K8S_NAMESPACE = 'ecommerce'
     }
 
+
+
+
     stages {
         stage('Init') {
             steps {
@@ -42,6 +45,16 @@ pipeline {
             }
         }
 
+        stage('Verify Tools') {
+                    steps {
+                        bat 'java -version'
+                        bat 'mvn -version'
+                        bat 'docker --version'
+                        bat 'kubectl config current-context'
+
+                    }
+                }
+
         stage('Ensure Namespace') {
             steps {
                 script {
@@ -57,15 +70,7 @@ pipeline {
             }
         }
 
-        stage('Verify Tools') {
-            steps {
-                bat 'java -version'
-                bat 'mvn -version'
-                bat 'docker --version'
-                bat 'kubectl config current-context'
 
-            }
-        }
 
         stage('Unit Tests') {
             parallel {
