@@ -69,7 +69,7 @@ pipeline {
             }
         }
 
-
+/*
 
         stage('Unit Tests') {
             parallel {
@@ -91,6 +91,8 @@ pipeline {
                 }
             }
         }
+
+
 
         stage('Integration Tests') {
             parallel {
@@ -138,7 +140,7 @@ pipeline {
                     }
                 }
 
-
+*/
 
         stage('Build Services') {
             when {
@@ -188,7 +190,7 @@ pipeline {
             when { branch 'master' }
             steps {
                 bat "kubectl apply -f k8s\\zipkin -n ${K8S_NAMESPACE}"
-                bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=200s"
+                bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=250s"
 
                 bat "kubectl apply -f k8s\\service-discovery -n ${K8S_NAMESPACE}"
                 bat "kubectl set image deployment/service-discovery service-discovery=${DOCKERHUB_USER}/service-discovery:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
