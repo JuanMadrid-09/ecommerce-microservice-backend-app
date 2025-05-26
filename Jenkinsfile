@@ -10,7 +10,8 @@ pipeline {
         DOCKERHUB_USER = 'juanmadrid09'
         DOCKER_CREDENTIALS_ID = 'password'
         SERVICES = 'api-gateway cloud-config favourite-service order-service payment-service product-service proxy-client service-discovery shipping-service user-service'
-        K8S_NAMESPACE = 'ecommerce'
+        K8S_NAMESPACE = 'ecommerce'}
+        KUBECONFIG = 'C:\\Users\\ACER\\.kube\\config'
     }
 
 
