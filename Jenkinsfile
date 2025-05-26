@@ -45,15 +45,14 @@ pipeline {
             }
         }
 
-        stage('Check Kubernetes Context') {
-                    steps {
-                        bat '''
-                        echo Verifying kubectl context...
-                        kubectl config current-context
-                        kubectl cluster-info
-                        '''
-                    }
-                }
+        stage('Debug kubeconfig') {
+            steps {
+                bat 'echo %KUBECONFIG%'
+                bat 'kubectl config current-context'
+                bat 'kubectl get nodes'
+            }
+        }
+
 
         stage('Verify Tools') {
                     steps {
