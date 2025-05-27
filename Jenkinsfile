@@ -127,28 +127,28 @@ pipeline {
 
 */
 
-//        stage('Build & Package') {
-//                    when { anyOf { branch 'master'; branch 'release' } }
-//                    steps {
-//                        bat "mvn clean package -DskipTests"
-//                    }
-//                }
-//
-//        stage('Build & Push Docker Images') {
-//            when { branch 'master' }
-//            steps {
-//                withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'DOCKERHUB_PASSWORD')]) {
-//                    bat "echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USER} --password-stdin"
-//
-//                    script {
-//                        SERVICES.split().each { service ->
-//                            bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
-//                            bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
-//                        }
-//                    }
-//                }
-//            }
-//        }
+       stage('Build & Package') {
+                   when { anyOf { branch 'master'; branch 'release' } }
+                   steps {
+                       bat "mvn clean package -DskipTests"
+                   }
+               }
+
+       stage('Build & Push Docker Images') {
+           when { branch 'master' }
+           steps {
+               withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'DOCKERHUB_PASSWORD')]) {
+                   bat "echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USER} --password-stdin"
+
+                   script {
+                       SERVICES.split().each { service ->
+                           bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
+                           bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
+                       }
+                   }
+               }
+           }
+       }
 
        stage('Levantar contenedores para pruebas') {
            steps {
