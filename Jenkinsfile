@@ -163,7 +163,7 @@ pipeline {
                    docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       darwinl06/service-discovery:%IMAGE_TAG%
+                       juanmadrid09/service-discovery:%IMAGE_TAG%
 
                    call :waitForService http://localhost:8761/actuator/health
 
@@ -173,7 +173,7 @@ pipeline {
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
                        -e EUREKA_INSTANCE=cloud-config-container ^
-                       darwinl06/cloud-config:%IMAGE_TAG%
+                       juanmadrid09/cloud-config:%IMAGE_TAG%
 
                    call :waitForService http://localhost:9296/actuator/health
 
@@ -197,7 +197,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=%NAME%-container ^
-                       darwinl06/%NAME%:%IMAGE_TAG%
+                       juanmadrid09/%NAME%:%IMAGE_TAG%
                    call :waitForService http://localhost:%PORT%/%NAME%/actuator/health
                    exit /b 0
 
@@ -271,7 +271,7 @@ pipeline {
                    docker run --rm --network ecommerce-test ^
                    -v "%CD%\\locust:/mnt" ^
                    -v "%CD%\\locust-results:/app" ^
-                   darwinl06/locust:%IMAGE_TAG% ^
+                   juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/order-service/locustfile.py ^
                    --host http://order-service-container:8300 ^
                    --headless -u 50 -r 5 -t 1m ^
@@ -280,7 +280,7 @@ pipeline {
                    docker run --rm --network ecommerce-test ^
                    -v "%CD%\\locust:/mnt" ^
                    -v "%CD%\\locust-results:/app" ^
-                   darwinl06/locust:%IMAGE_TAG% ^
+                   juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/payment-service/locustfile.py ^
                    --host http://payment-service-container:8400 ^
                    --headless -u 50 -r 5 -t 1m ^
@@ -289,7 +289,7 @@ pipeline {
                    docker run --rm --network ecommerce-test ^
                    -v "%CD%\\locust:/mnt" ^
                    -v "%CD%\\locust-results:/app" ^
-                   darwinl06/locust:%IMAGE_TAG% ^
+                   juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/favourite-service/locustfile.py ^
                    --host http://favourite-service-container:8800 ^
                    --headless -u 50 -r 5 -t 1m ^
