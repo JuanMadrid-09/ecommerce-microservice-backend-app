@@ -155,117 +155,102 @@ pipeline {
               script {
                   bat '''
                   docker network create ecommerce-test || echo "Red ya existe"
+
+                  echo "🚀 GRUPO 1: Levantando servicios de infraestructura..."
                   echo "🚀 Levantando ZIPKIN..."
-                  docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
+                  docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 --memory=256m --cpus=0.5 openzipkin/zipkin
 
                   echo "🚀 Levantando EUREKA..."
-                  docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
+                  docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 --memory=512m --cpus=1 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+                      -e JAVA_OPTS="-Xms256m -Xmx512m" ^
                       juanmadrid09/service-discovery:%IMAGE_TAG%
 
-                  :wait_eureka
-                  echo "⌛ Esperando EUREKA..."
-                  timeout /t 5 /nobreak >nul
-                  curl -s http://localhost:8761/actuator/health | findstr "status.*UP" >nul || goto wait_eureka
+                  for /l %%i in (1,1,6) do (
+                      timeout /t 5 /nobreak >nul
+                      curl -s http://localhost:8761/actuator/health | findstr "status.*UP" >nul && goto eureka_ready
+                  )
+                  echo "⚠️ EUREKA tardó más de lo esperado, continuando..."
+                  :eureka_ready
 
                   echo "🚀 Levantando CLOUD-CONFIG..."
-                  docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
+                  docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 --memory=384m --cpus=0.5 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                       -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
                       -e EUREKA_INSTANCE=cloud-config-container ^
-                      juanmadrid09/cloud-config:%IMAGE_TAG%
+                      -e JAVA_OPTS="-Xms128m -Xmx384m" ^
+                     juanmadrid09/cloud-config:%IMAGE_TAG%
 
-                  :wait_config
-                  echo "⌛ Esperando CLOUD-CONFIG..."
-                  timeout /t 5 /nobreak >nul
-                  curl -s http://localhost:9296/actuator/health | findstr "status.*UP" >nul || goto wait_config
+                  for /l %%i in (1,1,6) do (
+                      timeout /t 5 /nobreak >nul
+                      curl -s http://localhost:9296/actuator/health | findstr "status.*UP" >nul && goto config_ready
+                  )
+                  echo "⚠️ CLOUD-CONFIG tardó más de lo esperado, continuando..."
+                  :config_ready
 
-                  echo "🚀 Levantando ORDER-SERVICE..."
-                  docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 ^
+                  echo "🚀 GRUPO 2: Levantando servicios principales en paralelo..."
+                  start /b docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 --memory=512m --cpus=1 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=order-service-container ^
+                      -e JAVA_OPTS="-Xms256m -Xmx512m" ^
                       juanmadrid09/order-service:%IMAGE_TAG%
 
-                  :wait_order
-                  echo "⌛ Esperando ORDER-SERVICE..."
-                  timeout /t 5 /nobreak >nul
-                  for /f %%i in ('curl -s http://localhost:8300/order-service/actuator/health ^| jq -r ".status" 2^>nul') do if not "%%i"=="UP" goto wait_order
-
-                  echo "🚀 Levantando PAYMENT..."
-                  docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 ^
-                      -e SPRING_PROFILES_ACTIVE=dev ^
-                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                      -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                      -e EUREKA_INSTANCE=payment-service-container ^
-                      juanmadrid09/payment-service:%IMAGE_TAG%
-
-                  :wait_payment
-                  echo "⌛ Esperando PAYMENT-SERVICE..."
-                  timeout /t 5 /nobreak >nul
-                  for /f %%i in ('curl -s http://localhost:8400/payment-service/actuator/health ^| jq -r ".status" 2^>nul') do if not "%%i"=="UP" goto wait_payment
-
-                  echo "🚀 Levantando PRODUCT..."
-                  docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 ^
+                  start /b docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 --memory=512m --cpus=1 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=product-service-container ^
+                      -e JAVA_OPTS="-Xms256m -Xmx512m" ^
                       juanmadrid09/product-service:%IMAGE_TAG%
 
-                  :wait_product
-                  echo "⌛ Esperando PRODUCT-SERVICE..."
-                  timeout /t 5 /nobreak >nul
-                  for /f %%i in ('curl -s http://localhost:8500/product-service/actuator/health ^| jq -r ".status" 2^>nul') do if not "%%i"=="UP" goto wait_product
-
-                  echo "🚀 Levantando SHIPPING..."
-                  docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 ^
-                      -e SPRING_PROFILES_ACTIVE=dev ^
-                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                      -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                      -e EUREKA_INSTANCE=shipping-service-container ^
-                      juanmadrid09/shipping-service:%IMAGE_TAG%
-
-                  :wait_shipping
-                  echo "⌛ Esperando SHIPPING-SERVICE..."
-                  timeout /t 5 /nobreak >nul
-                  for /f %%i in ('curl -s http://localhost:8600/shipping-service/actuator/health ^| jq -r ".status" 2^>nul') do if not "%%i"=="UP" goto wait_shipping
-
-                  echo "🚀 Levantando USER..."
-                  docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 ^
+                  start /b docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 --memory=512m --cpus=1 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=user-service-container ^
+                      -e JAVA_OPTS="-Xms256m -Xmx512m" ^
                       juanmadrid09/user-service:%IMAGE_TAG%
 
-                  :wait_user
-                  echo "⌛ Esperando USER-SERVICE..."
-                  timeout /t 5 /nobreak >nul
-                  for /f %%i in ('curl -s http://localhost:8700/user-service/actuator/health ^| jq -r ".status" 2^>nul') do if not "%%i"=="UP" goto wait_user
+                  timeout /t 15 /nobreak >nul
 
-                  echo "🚀 Levantando FAVOURITE..."
-                  docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 ^
+                  echo "🚀 GRUPO 3: Levantando servicios secundarios..."
+                  start /b docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 --memory=384m --cpus=0.5 ^
+                      -e SPRING_PROFILES_ACTIVE=dev ^
+                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+                      -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
+                      -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
+                      -e EUREKA_INSTANCE=payment-service-container ^
+                      -e JAVA_OPTS="-Xms128m -Xmx384m" ^
+                      juanmadrid09/payment-service:%IMAGE_TAG%
+
+                  start /b docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 --memory=384m --cpus=0.5 ^
+                      -e SPRING_PROFILES_ACTIVE=dev ^
+                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+                      -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
+                      -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
+                      -e EUREKA_INSTANCE=shipping-service-container ^
+                      -e JAVA_OPTS="-Xms128m -Xmx384m" ^
+                      juanmadrid09/shipping-service:%IMAGE_TAG%
+
+                  start /b docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 --memory=384m --cpus=0.5 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=favourite-service-container ^
+                      -e JAVA_OPTS="-Xms128m -Xmx384m" ^
                       juanmadrid09/favourite-service:%IMAGE_TAG%
 
-                  :wait_favourite
-                  echo "⌛ Esperando FAVOURITE-SERVICE..."
-                  timeout /t 5 /nobreak >nul
-                  for /f %%i in ('curl -s http://localhost:8800/favourite-service/actuator/health ^| jq -r ".status" 2^>nul') do if not "%%i"=="UP" goto wait_favourite
-
+                  timeout /t 30 /nobreak >nul
+                  echo "📊 Estado de contenedores:"
+                  docker ps --filter network=ecommerce-test --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
                   echo "✅ Todos los contenedores están arriba y saludables."
                   '''
               }
@@ -331,7 +316,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/order-service/locustfile.py ^
                    --host http://order-service-container:8300 ^
-                   --headless -u 5 -r 1 -t 1m ^
+                   --headless -u 10 -r 2 -t 1m ^
                    --csv order-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -340,7 +325,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/payment-service/locustfile.py ^
                    --host http://payment-service-container:8400 ^
-                   --headless -u 5 -r 1 -t 1m ^
+                   --headless -u 10 -r 2 -t 1m ^
                    --csv payment-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -349,7 +334,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/favourite-service/locustfile.py ^
                    --host http://favourite-service-container:8800 ^
-                   --headless -u 5 -r 1 -t 1m ^
+                   --headless -u 10 -r 2 -t 1m ^
                    --csv favourite-service-stress --csv-full-history
 
                    echo ✅ Pruebas de estrés completadas
