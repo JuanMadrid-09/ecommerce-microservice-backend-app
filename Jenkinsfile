@@ -77,53 +77,53 @@ pipeline {
                         }
 
 
-//
-//          stage('Unit Tests') {
-//                     when {
-//                         anyOf {
-//                             branch 'dev'; branch 'master'; branch 'release'
-//                             expression { env.BRANCH_NAME.startsWith('feature/') }
-//                         }
-//                     }
-//                     steps {
-//                         script {
-//                             ['user-service', 'product-service', 'payment-service'].each {
-//                                 bat "mvn test -pl ${it}"
-//                             }
-//                         }
-//                     }
-//                 }
-//
-//
-//         stage('Integration Tests') {
-//                     when {
-//                         anyOf {
-//                             branch 'master'
-//                             expression { env.BRANCH_NAME.startsWith('feature/') }
-//                             allOf { not { branch 'master' }; not { branch 'release' } }
-//                         }
-//                     }
-//                     steps {
-//                         script {
-//                             ['user-service', 'product-service'].each {
-//                                 bat "mvn verify -pl ${it}"
-//                             }
-//                         }
-//                     }
-//                 }
-//
-//          stage('E2E Tests') {
-//                     when {
-//                         anyOf {
-//                             branch 'master'
-//                             expression { env.BRANCH_NAME.startsWith('feature/') }
-//                             allOf { not { branch 'master' }; not { branch 'release' } }
-//                         }
-//                     }
-//                     steps {
-//                         bat "mvn verify -pl e2e-tests"
-//                     }
-//                 }
+
+         stage('Unit Tests') {
+                    when {
+                        anyOf {
+                            branch 'dev'; branch 'master'; branch 'release'
+                            expression { env.BRANCH_NAME.startsWith('feature/') }
+                        }
+                    }
+                    steps {
+                        script {
+                            ['user-service', 'product-service', 'payment-service'].each {
+                                bat "mvn test -pl ${it}"
+                            }
+                        }
+                    }
+                }
+
+
+        stage('Integration Tests') {
+                    when {
+                        anyOf {
+                            branch 'master'
+                            expression { env.BRANCH_NAME.startsWith('feature/') }
+                            allOf { not { branch 'master' }; not { branch 'release' } }
+                        }
+                    }
+                    steps {
+                        script {
+                            ['user-service', 'product-service'].each {
+                                bat "mvn verify -pl ${it}"
+                            }
+                        }
+                    }
+                }
+
+         stage('E2E Tests') {
+                    when {
+                        anyOf {
+                            branch 'master'
+                            expression { env.BRANCH_NAME.startsWith('feature/') }
+                            allOf { not { branch 'master' }; not { branch 'release' } }
+                        }
+                    }
+                    steps {
+                        bat "mvn verify -pl e2e-tests"
+                    }
+                }
 
 
 
@@ -388,51 +388,51 @@ pipeline {
 
 
 
-//
-//        stage('Run Load Tests with Locust') {
-//
-//            when { branch 'master' }
-//            steps {
-//                script {
-//                    bat '''
-//
-//                    echo 🚀 Levantando Locust para order-service...
-//                    docker run --rm --network ecommerce-test ^
-//                      -v "%CD%\\locust:/mnt" ^
-//                      -v "%CD%\\locust-results:/app" ^
-//                      juanmadrid09/locust:%IMAGE_TAG% ^
-//                      -f /mnt/test/order-service/locustfile.py ^
-//                      --host http://order-service-container:8300 ^
-//                      --headless -u 5 -r 1 -t 1m ^
-//                      --csv order-service-stats --csv-full-history
-//
-//                    echo 🚀 Levantando Locust para payment-service...
-//
-//                    docker run --rm --network ecommerce-test ^
-//                      -v "%CD%\\locust:/mnt" ^
-//                      -v "%CD%\\locust-results:/app" ^
-//                      juanmadrid09/locust:%IMAGE_TAG% ^
-//                      -f /mnt/test/payment-service/locustfile.py ^
-//                      --host http://payment-service-container:8400 ^
-//                      --headless -u 5 -r 1 -t 1m ^
-//                      --csv payment-service-stats --csv-full-history
-//
-//                    echo 🚀 Levantando Locust para favourite-service...
-//
-//                    docker run --rm --network ecommerce-test ^
-//                      -v "%CD%\\locust:/mnt" ^
-//                      -v "%CD%\\locust-results:/app" ^
-//                      juanmadrid09/locust:%IMAGE_TAG% ^
-//                      -f /mnt/test/favourite-service/locustfile.py ^
-//                      --host http://favourite-service-container:8800 ^
-//                      --headless -u 5 -r 1 -t 1m ^
-//                      --csv favourite-service-stats --csv-full-history
-//
-//                    echo ✅ Pruebas completadas
-//                    '''
-//                }
-//            }
-//        }
+
+       stage('Run Load Tests with Locust') {
+
+           when { branch 'master' }
+           steps {
+               script {
+                   bat '''
+
+                   echo 🚀 Levantando Locust para order-service...
+                   docker run --rm --network ecommerce-test ^
+                     -v "%CD%\\locust:/mnt" ^
+                     -v "%CD%\\locust-results:/app" ^
+                     juanmadrid09/locust:%IMAGE_TAG% ^
+                     -f /mnt/test/order-service/locustfile.py ^
+                     --host http://order-service-container:8300 ^
+                     --headless -u 5 -r 1 -t 1m ^
+                     --csv order-service-stats --csv-full-history
+
+                   echo 🚀 Levantando Locust para payment-service...
+
+                   docker run --rm --network ecommerce-test ^
+                     -v "%CD%\\locust:/mnt" ^
+                     -v "%CD%\\locust-results:/app" ^
+                     juanmadrid09/locust:%IMAGE_TAG% ^
+                     -f /mnt/test/payment-service/locustfile.py ^
+                     --host http://payment-service-container:8400 ^
+                     --headless -u 5 -r 1 -t 1m ^
+                     --csv payment-service-stats --csv-full-history
+
+                   echo 🚀 Levantando Locust para favourite-service...
+
+                   docker run --rm --network ecommerce-test ^
+                     -v "%CD%\\locust:/mnt" ^
+                     -v "%CD%\\locust-results:/app" ^
+                     juanmadrid09/locust:%IMAGE_TAG% ^
+                     -f /mnt/test/favourite-service/locustfile.py ^
+                     --host http://favourite-service-container:8800 ^
+                     --headless -u 5 -r 1 -t 1m ^
+                     --csv favourite-service-stats --csv-full-history
+
+                   echo ✅ Pruebas completadas
+                   '''
+               }
+           }
+       }
 
        stage('Run Stress Tests with Locust') {
            when { branch 'master' }
@@ -498,48 +498,48 @@ pipeline {
                }
            }
        }
-//
-//         stage('Deploy Common Config') {
-//             when { branch 'master' }
-//             steps {
-//                 bat "kubectl apply -f k8s\\common-config.yaml -n ${K8S_NAMESPACE}"
-//             }
-//         }
-//
-//         stage('Deploy Core Services') {
-//             when { branch 'master' }
-//             steps {
-//                 bat "kubectl apply -f k8s\\zipkin -n ${K8S_NAMESPACE}"
-//                 bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=150s"
-//
-//                 bat "kubectl apply -f k8s\\service-discovery -n ${K8S_NAMESPACE}"
-//                 bat "kubectl set image deployment/service-discovery service-discovery=${DOCKERHUB_USER}/service-discovery:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-//                 bat "kubectl rollout status deployment/service-discovery -n ${K8S_NAMESPACE} --timeout=300s"
-//
-//                 bat "kubectl apply -f k8s\\cloud-config -n ${K8S_NAMESPACE}"
-//                 bat "kubectl set image deployment/cloud-config cloud-config=${DOCKERHUB_USER}/cloud-config:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-//                 bat "kubectl rollout status deployment/cloud-config -n ${K8S_NAMESPACE} --timeout=350s"
-//             }
-//         }
-//
-//
-//
-//          stage('Deploy Microservices') {
-//                     when { branch 'master' }
-//                     steps {
-//                         script {
-//                             echo "👻👻👻👻👻"
-//         //                     SERVICES.split().each { svc ->
-//         //                         if (!['user-service', ].contains(svc)) {
-//         //                             bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
-//         //                             bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-//         //                             bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
-//         //                             bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=300s"
-//         //                         }
-//         //                     }
-//                         }
-//                     }
-//                 }
+
+        stage('Deploy Common Config') {
+            when { branch 'master' }
+            steps {
+                bat "kubectl apply -f k8s\\common-config.yaml -n ${K8S_NAMESPACE}"
+            }
+        }
+
+        stage('Deploy Core Services') {
+            when { branch 'master' }
+            steps {
+                bat "kubectl apply -f k8s\\zipkin -n ${K8S_NAMESPACE}"
+                bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=150s"
+
+                bat "kubectl apply -f k8s\\service-discovery -n ${K8S_NAMESPACE}"
+                bat "kubectl set image deployment/service-discovery service-discovery=${DOCKERHUB_USER}/service-discovery:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
+                bat "kubectl rollout status deployment/service-discovery -n ${K8S_NAMESPACE} --timeout=300s"
+
+                bat "kubectl apply -f k8s\\cloud-config -n ${K8S_NAMESPACE}"
+                bat "kubectl set image deployment/cloud-config cloud-config=${DOCKERHUB_USER}/cloud-config:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
+                bat "kubectl rollout status deployment/cloud-config -n ${K8S_NAMESPACE} --timeout=350s"
+            }
+        }
+
+
+
+         stage('Deploy Microservices') {
+                    when { branch 'master' }
+                    steps {
+                        script {
+                            echo "👻👻👻👻👻"
+        //                     SERVICES.split().each { svc ->
+        //                         if (!['user-service', ].contains(svc)) {
+        //                             bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
+        //                             bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
+        //                             bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
+        //                             bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=300s"
+        //                         }
+        //                     }
+                        }
+                    }
+                }
 
         stage('Generate Release Notes') {
             when {
