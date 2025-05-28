@@ -127,28 +127,28 @@ pipeline {
 
 */
 
-//        stage('Build & Package') {
-//                    when { anyOf { branch 'master'; branch 'release' } }
-//                    steps {
-//                        bat "mvn clean package -DskipTests"
-//                    }
-//                }
-//
-//        stage('Build & Push Docker Images') {
-//            when { branch 'master' }
-//            steps {
-//                withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
-//                    bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
-//
-//                    script {
-//                        SERVICES.split().each { service ->
-//                            bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
-//                            bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
-//                        }
-//                    }
-//                }
-//            }
-//        }
+       stage('Build & Package') {
+                   when { anyOf { branch 'master'; branch 'release' } }
+                   steps {
+                       bat "mvn clean package -DskipTests"
+                   }
+               }
+
+       stage('Build & Push Docker Images') {
+           when { branch 'master' }
+           steps {
+               withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
+                   bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
+
+                   script {
+                       SERVICES.split().each { service ->
+                           bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
+                           bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
+                       }
+                   }
+               }
+           }
+       }
 //
 //        stage('Levantar contenedores para pruebas') {
 //            steps {
@@ -336,8 +336,6 @@ pipeline {
                    bat '''
 
                    echo 🚀 Levantando Locust para order-service...
-                   docker build -t %DOCKERHUB_USER%/locust:%IMAGE_TAG% .\\%service% ^
-                   docker push %DOCKERHUB_USER%/locust:%IMAGE_TAG% ^
                    docker run --rm --network ecommerce-test ^
                      -v "%CD%\\locust:/mnt" ^
                      -v "%CD%\\locust-results:/app" ^
