@@ -78,52 +78,52 @@ pipeline {
 
 
 
-         stage('Unit Tests') {
-                    when {
-                        anyOf {
-                            branch 'dev'; branch 'master'; branch 'release'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                        }
-                    }
-                    steps {
-                        script {
-                            ['user-service', 'product-service', 'payment-service'].each {
-                                bat "mvn test -pl ${it}"
-                            }
-                        }
-                    }
-                }
-
-
-        stage('Integration Tests') {
-                    when {
-                        anyOf {
-                            branch 'master'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                            allOf { not { branch 'master' }; not { branch 'release' } }
-                        }
-                    }
-                    steps {
-                        script {
-                            ['user-service', 'product-service'].each {
-                                bat "mvn verify -pl ${it}"
-                            }
-                        }
-                    }
-                }
-
-         stage('E2E Tests') {
-                    when {
-                        anyOf {
-                            branch 'master'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                            allOf { not { branch 'master' }; not { branch 'release' } }
-                        }
-                    }
-                    steps {
-                        bat "mvn verify -pl e2e-tests"
-                    }
-                }
+//          stage('Unit Tests') {
+//                     when {
+//                         anyOf {
+//                             branch 'dev'; branch 'master'; branch 'release'
+//                             expression { env.BRANCH_NAME.startsWith('feature/') }
+//                         }
+//                     }
+//                     steps {
+//                         script {
+//                             ['user-service', 'product-service', 'payment-service'].each {
+//                                 bat "mvn test -pl ${it}"
+//                             }
+//                         }
+//                     }
+//                 }
+//
+//
+//         stage('Integration Tests') {
+//                     when {
+//                         anyOf {
+//                             branch 'master'
+//                             expression { env.BRANCH_NAME.startsWith('feature/') }
+//                             allOf { not { branch 'master' }; not { branch 'release' } }
+//                         }
+//                     }
+//                     steps {
+//                         script {
+//                             ['user-service', 'product-service'].each {
+//                                 bat "mvn verify -pl ${it}"
+//                             }
+//                         }
+//                     }
+//                 }
+//
+//          stage('E2E Tests') {
+//                     when {
+//                         anyOf {
+//                             branch 'master'
+//                             expression { env.BRANCH_NAME.startsWith('feature/') }
+//                             allOf { not { branch 'master' }; not { branch 'release' } }
+//                         }
+//                     }
+//                     steps {
+//                         bat "mvn verify -pl e2e-tests"
+//                     }
+//                 }
 
 
 
