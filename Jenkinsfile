@@ -127,181 +127,181 @@ pipeline {
 
 
 
-       stage('Build & Package') {
-                   when { anyOf { branch 'master'; branch 'release' } }
-                   steps {
-                       bat "mvn clean package -DskipTests"
-                   }
-               }
-
-       stage('Build & Push Docker Images') {
-           when { branch 'master' }
-           steps {
-               withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
-                   bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
-
-                   script {
-                       SERVICES.split().each { service ->
-                           bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
-                           bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
-                       }
-                   }
-               }
-           }
-       }
-
-       stage('Levantar contenedores para pruebas') {
-           steps {
-               script {
-                   bat '''
-
-                   docker network create ecommerce-test || true
-
-                   echo 🚀 Levantando ZIPKIN...
-                   docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 ^
-                       --memory=256m --cpus=0.5 ^
-                       openzipkin/zipkin
-
-                   echo 🚀 Levantando EUREKA...
-                   docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
-                       --memory=512m --cpus=0.5 ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e JAVA_OPTS="-Xmx256m -Xms128m" ^
-                       juanmadrid09/service-discovery:%IMAGE_TAG%
-
-                   call :waitForService http://localhost:8761/actuator/health 120
-
-                   echo 🚀 Levantando CLOUD-CONFIG...
-                   docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
-                       --memory=512m --cpus=0.5 ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
-                       -e EUREKA_INSTANCE=cloud-config-container ^
-                       -e JAVA_OPTS="-Xmx256m -Xms128m" ^
-                       juanmadrid09/cloud-config:%IMAGE_TAG%
-
-                   call :waitForService http://localhost:9296/actuator/health 120
-
-                   REM Levantar servicios en paralelo por lotes para reducir carga
-                   echo 🚀 Levantando primer lote de servicios...
-                   call :runService order-service 8300 &
-                   call :runService payment-service 8400 &
-                   call :runService product-service 8500 &
-
-                   REM Esperar a que el primer lote esté listo
-                   call :waitForService http://localhost:8300/order-service/actuator/health 180
-                   call :waitForService http://localhost:8400/payment-service/actuator/health 180
-                   call :waitForService http://localhost:8500/product-service/actuator/health 180
-
-                   echo 🚀 Levantando segundo lote de servicios...
-                   call :runService shipping-service 8600 &
-                   call :runService user-service 8700 &
-                   call :runService favourite-service 8800 &
-
-                   REM Esperar a que el segundo lote esté listo
-                   call :waitForService http://localhost:8600/shipping-service/actuator/health 180
-                   call :waitForService http://localhost:8700/user-service/actuator/health 180
-                   call :waitForService http://localhost:8800/favourite-service/actuator/health 180
-
-                   echo ✅ Todos los contenedores están arriba y saludables.
-                   exit /b 0
-
-                   :runService
-                   set "NAME=%~1"
-                   set "PORT=%~2"
-                   echo 🚀 Levantando %NAME%...
-                   docker run -d --name %NAME%-container --network ecommerce-test -p %PORT%:%PORT% ^
-                       --memory=512m --cpus=0.5 ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=%NAME%-container ^
-                       -e JAVA_OPTS="-Xmx256m -Xms128m" ^
-                       juanmadrid09/%NAME%:%IMAGE_TAG%
-                   exit /b 0
-
-                   :waitForService
-                   set "URL=%~1"
-                   set "TIMEOUT_SECONDS=%~2"
-                   if "%TIMEOUT_SECONDS%"=="" set "TIMEOUT_SECONDS=60"
-
-                   echo ⏳ Esperando a que %URL% esté disponible (timeout: %TIMEOUT_SECONDS%s)...
-                   set /a "COUNTER=0"
-                   set /a "MAX_ATTEMPTS=%TIMEOUT_SECONDS%/10"
-
-                   :wait_loop
-                   set /a "COUNTER+=1"
-                   if %COUNTER% gtr %MAX_ATTEMPTS% (
-                       echo ❌ Timeout alcanzado para %URL% después de %TIMEOUT_SECONDS% segundos
-                       exit /b 1
-                   )
-
-                   curl -s --connect-timeout 5 --max-time 10 %URL% > nul 2>&1
-                   if %errorlevel% equ 0 (
-                       for /f "delims=" %%i in ('curl -s --connect-timeout 5 --max-time 10 %URL% ^| jq -r ".status" 2^>nul') do (
-                           if "%%i"=="UP" (
-                               echo ✅ %URL% está disponible
-                               goto :eof
-                           )
-                       )
-                   )
-
-                   echo . (intento %COUNTER%/%MAX_ATTEMPTS%)
-                   timeout /t 10 /nobreak > nul
-                   goto wait_loop
-                   '''
-               }
-           }
-       }
-
-
-       stage('Run Load Tests with Locust') {
-
-           when { branch 'master' }
-           steps {
-               script {
-                   bat '''
-
-                   echo 🚀 Levantando Locust para order-service...
-                   docker run --rm --network ecommerce-test ^
-                     -v "%CD%\\locust:/mnt" ^
-                     -v "%CD%\\locust-results:/app" ^
-                     juanmadrid09/locust:%IMAGE_TAG% ^
-                     -f /mnt/test/order-service/locustfile.py ^
-                     --host http://order-service-container:8300 ^
-                     --headless -u 10 -r 2 -t 1m ^
-                     --csv order-service-stats --csv-full-history
-
-                   echo 🚀 Levantando Locust para payment-service...
-
-                   docker run --rm --network ecommerce-test ^
-                     -v "%CD%\\locust:/mnt" ^
-                     -v "%CD%\\locust-results:/app" ^
-                     juanmadrid09/locust:%IMAGE_TAG% ^
-                     -f /mnt/test/payment-service/locustfile.py ^
-                     --host http://payment-service-container:8400 ^
-                     --headless -u 10 -r 1 -t 1m ^
-                     --csv payment-service-stats --csv-full-history
-
-                   echo 🚀 Levantando Locust para favourite-service...
-
-                   docker run --rm --network ecommerce-test ^
-                     -v "%CD%\\locust:/mnt" ^
-                     -v "%CD%\\locust-results:/app" ^
-                     juanmadrid09/locust:%IMAGE_TAG% ^
-                     -f /mnt/test/favourite-service/locustfile.py ^
-                     --host http://favourite-service-container:8800 ^
-                     --headless -u 10 -r 2 -t 1m ^
-                     --csv favourite-service-stats --csv-full-history
-
-                   echo ✅ Pruebas completadas
-                   '''
-               }
-           }
-       }
+//        stage('Build & Package') {
+//                    when { anyOf { branch 'master'; branch 'release' } }
+//                    steps {
+//                        bat "mvn clean package -DskipTests"
+//                    }
+//                }
+//
+//        stage('Build & Push Docker Images') {
+//            when { branch 'master' }
+//            steps {
+//                withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
+//                    bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
+//
+//                    script {
+//                        SERVICES.split().each { service ->
+//                            bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
+//                            bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//
+//        stage('Levantar contenedores para pruebas') {
+//            steps {
+//                script {
+//                    bat '''
+//
+//                    docker network create ecommerce-test || true
+//
+//                    echo 🚀 Levantando ZIPKIN...
+//                    docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 ^
+//                        --memory=256m --cpus=0.5 ^
+//                        openzipkin/zipkin
+//
+//                    echo 🚀 Levantando EUREKA...
+//                    docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
+//                        --memory=512m --cpus=0.5 ^
+//                        -e SPRING_PROFILES_ACTIVE=dev ^
+//                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+//                        -e JAVA_OPTS="-Xmx256m -Xms128m" ^
+//                        juanmadrid09/service-discovery:%IMAGE_TAG%
+//
+//                    call :waitForService http://localhost:8761/actuator/health 120
+//
+//                    echo 🚀 Levantando CLOUD-CONFIG...
+//                    docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
+//                        --memory=512m --cpus=0.5 ^
+//                        -e SPRING_PROFILES_ACTIVE=dev ^
+//                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+//                        -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
+//                        -e EUREKA_INSTANCE=cloud-config-container ^
+//                        -e JAVA_OPTS="-Xmx256m -Xms128m" ^
+//                        juanmadrid09/cloud-config:%IMAGE_TAG%
+//
+//                    call :waitForService http://localhost:9296/actuator/health 120
+//
+//                    REM Levantar servicios en paralelo por lotes para reducir carga
+//                    echo 🚀 Levantando primer lote de servicios...
+//                    call :runService order-service 8300 &
+//                    call :runService payment-service 8400 &
+//                    call :runService product-service 8500 &
+//
+//                    REM Esperar a que el primer lote esté listo
+//                    call :waitForService http://localhost:8300/order-service/actuator/health 180
+//                    call :waitForService http://localhost:8400/payment-service/actuator/health 180
+//                    call :waitForService http://localhost:8500/product-service/actuator/health 180
+//
+//                    echo 🚀 Levantando segundo lote de servicios...
+//                    call :runService shipping-service 8600 &
+//                    call :runService user-service 8700 &
+//                    call :runService favourite-service 8800 &
+//
+//                    REM Esperar a que el segundo lote esté listo
+//                    call :waitForService http://localhost:8600/shipping-service/actuator/health 180
+//                    call :waitForService http://localhost:8700/user-service/actuator/health 180
+//                    call :waitForService http://localhost:8800/favourite-service/actuator/health 180
+//
+//                    echo ✅ Todos los contenedores están arriba y saludables.
+//                    exit /b 0
+//
+//                    :runService
+//                    set "NAME=%~1"
+//                    set "PORT=%~2"
+//                    echo 🚀 Levantando %NAME%...
+//                    docker run -d --name %NAME%-container --network ecommerce-test -p %PORT%:%PORT% ^
+//                        --memory=512m --cpus=0.5 ^
+//                        -e SPRING_PROFILES_ACTIVE=dev ^
+//                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+//                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
+//                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
+//                        -e EUREKA_INSTANCE=%NAME%-container ^
+//                        -e JAVA_OPTS="-Xmx256m -Xms128m" ^
+//                        juanmadrid09/%NAME%:%IMAGE_TAG%
+//                    exit /b 0
+//
+//                    :waitForService
+//                    set "URL=%~1"
+//                    set "TIMEOUT_SECONDS=%~2"
+//                    if "%TIMEOUT_SECONDS%"=="" set "TIMEOUT_SECONDS=60"
+//
+//                    echo ⏳ Esperando a que %URL% esté disponible (timeout: %TIMEOUT_SECONDS%s)...
+//                    set /a "COUNTER=0"
+//                    set /a "MAX_ATTEMPTS=%TIMEOUT_SECONDS%/10"
+//
+//                    :wait_loop
+//                    set /a "COUNTER+=1"
+//                    if %COUNTER% gtr %MAX_ATTEMPTS% (
+//                        echo ❌ Timeout alcanzado para %URL% después de %TIMEOUT_SECONDS% segundos
+//                        exit /b 1
+//                    )
+//
+//                    curl -s --connect-timeout 5 --max-time 10 %URL% > nul 2>&1
+//                    if %errorlevel% equ 0 (
+//                        for /f "delims=" %%i in ('curl -s --connect-timeout 5 --max-time 10 %URL% ^| jq -r ".status" 2^>nul') do (
+//                            if "%%i"=="UP" (
+//                                echo ✅ %URL% está disponible
+//                                goto :eof
+//                            )
+//                        )
+//                    )
+//
+//                    echo . (intento %COUNTER%/%MAX_ATTEMPTS%)
+//                    timeout /t 10 /nobreak > nul
+//                    goto wait_loop
+//                    '''
+//                }
+//            }
+//        }
+//
+//
+//        stage('Run Load Tests with Locust') {
+//
+//            when { branch 'master' }
+//            steps {
+//                script {
+//                    bat '''
+//
+//                    echo 🚀 Levantando Locust para order-service...
+//                    docker run --rm --network ecommerce-test ^
+//                      -v "%CD%\\locust:/mnt" ^
+//                      -v "%CD%\\locust-results:/app" ^
+//                      juanmadrid09/locust:%IMAGE_TAG% ^
+//                      -f /mnt/test/order-service/locustfile.py ^
+//                      --host http://order-service-container:8300 ^
+//                      --headless -u 10 -r 2 -t 1m ^
+//                      --csv order-service-stats --csv-full-history
+//
+//                    echo 🚀 Levantando Locust para payment-service...
+//
+//                    docker run --rm --network ecommerce-test ^
+//                      -v "%CD%\\locust:/mnt" ^
+//                      -v "%CD%\\locust-results:/app" ^
+//                      juanmadrid09/locust:%IMAGE_TAG% ^
+//                      -f /mnt/test/payment-service/locustfile.py ^
+//                      --host http://payment-service-container:8400 ^
+//                      --headless -u 10 -r 1 -t 1m ^
+//                      --csv payment-service-stats --csv-full-history
+//
+//                    echo 🚀 Levantando Locust para favourite-service...
+//
+//                    docker run --rm --network ecommerce-test ^
+//                      -v "%CD%\\locust:/mnt" ^
+//                      -v "%CD%\\locust-results:/app" ^
+//                      juanmadrid09/locust:%IMAGE_TAG% ^
+//                      -f /mnt/test/favourite-service/locustfile.py ^
+//                      --host http://favourite-service-container:8800 ^
+//                      --headless -u 10 -r 2 -t 1m ^
+//                      --csv favourite-service-stats --csv-full-history
+//
+//                    echo ✅ Pruebas completadas
+//                    '''
+//                }
+//            }
+//        }
 
        stage('Run Stress Tests with Locust') {
            when { branch 'master' }
