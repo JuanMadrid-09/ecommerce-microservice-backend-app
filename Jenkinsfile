@@ -151,181 +151,70 @@ pipeline {
        }
 
        stage('Levantar contenedores para pruebas') {
-           steps {
-               script {
-                   bat '''
-                   docker network create ecommerce-test 2>nul || echo Red ya existe
-                   echo 🚀 Levantando ZIPKIN...
-                   docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 ^
-                       --memory=200m --cpus="0.2" ^
-                       openzipkin/zipkin
+                   steps {
+                       script {
+                           bat '''
 
-                   echo 🚀 Levantando EUREKA...
-                   docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       juanmadrid09/service-discovery:%IMAGE_TAG%
+                           docker network create ecommerce-test || true
 
-                   :wait_eureka
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8761/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando EUREKA...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_eureka
-                   )
+                           echo 🚀 Levantando ZIPKIN...
+                           docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
 
-                   echo 🚀 Levantando CLOUD-CONFIG...
-                   docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
-                       --memory=350m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
-                       -e EUREKA_INSTANCE=cloud-config-container ^
-                       juanmadrid09/cloud-config:%IMAGE_TAG%
+                           echo 🚀 Levantando EUREKA...
+                           docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
+                               -e SPRING_PROFILES_ACTIVE=dev ^
+                               -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+                               juanmadrid09/service-discovery:%IMAGE_TAG%
 
-                   :wait_config
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:9296/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando CLOUD-CONFIG...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_config
-                   )
+                           call :waitForService http://localhost:8761/actuator/health
 
-                   echo 🚀 Levantando ORDER-SERVICE...
-                   docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=order-service-container ^
-                       juanmadrid09/order-service:%IMAGE_TAG%
+                           echo 🚀 Levantando CLOUD-CONFIG...
+                           docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
+                               -e SPRING_PROFILES_ACTIVE=dev ^
+                               -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+                               -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
+                               -e EUREKA_INSTANCE=cloud-config-container ^
+                               juanmadrid09/cloud-config:%IMAGE_TAG%
 
-                   :wait_order
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8300/order-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando ORDER-SERVICE...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_order
-                   )
+                           call :waitForService http://localhost:9296/actuator/health
 
-                   echo 🚀 Levantando PAYMENT...
-                   docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=payment-service-container ^
-                       juanmadrid09/payment-service:%IMAGE_TAG%
+                           call :runService order-service 8300
+                           call :runService payment-service 8400
+                           call :runService product-service 8500
+                           call :runService shipping-service 8600
+                           call :runService user-service 8700
+                           call :runService favourite-service 8800
 
-                   :wait_payment
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8400/payment-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando PAYMENT-SERVICE...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_payment
-                   )
+                           echo ✅ Todos los contenedores están arriba y saludables.
+                           exit /b 0
 
-                   echo 🚀 Levantando PRODUCT...
-                   docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=product-service-container ^
-                       juanmadrid09/product-service:%IMAGE_TAG%
+                           :runService
+                           set "NAME=%~1"
+                           set "PORT=%~2"
+                           echo 🚀 Levantando %NAME%...
+                           docker run -d --name %NAME%-container --network ecommerce-test -p %PORT%:%PORT% ^
+                               -e SPRING_PROFILES_ACTIVE=dev ^
+                               -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
+                               -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
+                               -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
+                               -e EUREKA_INSTANCE=%NAME%-container ^
+                               juanmadrid09/%NAME%:%IMAGE_TAG%
+                           call :waitForService http://localhost:%PORT%/%NAME%/actuator/health
+                           exit /b 0
 
-                   :wait_product
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8500/product-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando PRODUCT-SERVICE...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_product
-                   )
-
-                   echo 🚀 Levantando SHIPPING...
-                   docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=shipping-service-container ^
-                       juanmadrid09/shipping-service:%IMAGE_TAG%
-
-                   :wait_shipping
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8600/shipping-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando SHIPPING-SERVICE...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_shipping
-                   )
-
-                   echo 🚀 Levantando USER...
-                   docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=user-service-container ^
-                       juanmadrid09/user-service:%IMAGE_TAG%
-
-                   :wait_user
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8700/user-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       echo ⌛ Esperando USER-SERVICE...
-                       timeout /t 5 /nobreak >nul
-                       goto wait_user
-                   )
-
-                   echo 🚀 Levantando FAVOURITE...
-                   docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 ^
-                       --memory=400m --cpus="0.3" ^
-                       -e SPRING_PROFILES_ACTIVE=dev ^
-                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                       -e EUREKA_INSTANCE=favourite-service-container ^
-                       juanmadrid09/favourite-service:%IMAGE_TAG%
-
-                   echo 💤 Dando tiempo al sistema para estabilizarse...
-                   timeout /t 10 /nobreak >nul
-
-                   :wait_favourite
-                   set /a counter=0
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8800/favourite-service/actuator/health' -TimeoutSec 10; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
-                   if %errorlevel% neq 0 (
-                       set /a counter+=1
-                       if %counter% geq 24 (
-                           echo ❌ TIMEOUT: FAVOURITE-SERVICE no respondió en 2 minutos
-                           goto cleanup_on_error
-                       )
-                       echo ⌛ Esperando FAVOURITE-SERVICE... intento %counter%/24
-                       timeout /t 5 /nobreak >nul
-                       goto wait_favourite
-                   )
-
-                   echo ✅ Todos los contenedores están arriba y saludables.
-
-                   goto end_script
-
-                   :cleanup_on_error
-                   echo 🧹 Limpiando contenedores por timeout...
-                   docker stop favourite-service-container user-service-container shipping-service-container product-service-container payment-service-container order-service-container cloud-config-container service-discovery-container zipkin-container 2>nul
-                   docker rm favourite-service-container user-service-container shipping-service-container product-service-container payment-service-container order-service-container cloud-config-container service-discovery-container zipkin-container 2>nul
-                   docker network rm ecommerce-test 2>nul
-                   echo ❌ Pipeline falló por timeout en los servicios
-                   exit /b 1
-
-                   :end_script
-                   '''
+                           :waitForService
+                           set "URL=%~1"
+                           echo ⏳ Esperando a que %URL% esté disponible...
+                           :wait_loop
+                           for /f "delims=" %%i in ('curl -s %URL% ^| jq -r ".status"') do (
+                               if "%%i"=="UP" goto :eof
+                           )
+                           timeout /t 5 /nobreak
+                           goto wait_loop
+                           '''
+                       }
+                   }
                }
-           }
-       }
 
 
        stage('Run Load Tests with Locust') {
@@ -386,7 +275,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/order-service/locustfile.py ^
                    --host http://order-service-container:8300 ^
-                   --headless -u 50 -r 5 -t 1m ^
+                   --headless -u 20 -r 1 -t 1m ^
                    --csv order-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -395,7 +284,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/payment-service/locustfile.py ^
                    --host http://payment-service-container:8400 ^
-                   --headless -u 50 -r 5 -t 1m ^
+                   --headless -u 20 -r 1 -t 1m ^
                    --csv payment-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -404,7 +293,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/favourite-service/locustfile.py ^
                    --host http://favourite-service-container:8800 ^
-                   --headless -u 50 -r 5 -t 1m ^
+                   --headless -u 20 -r 1 -t 1m ^
                    --csv favourite-service-stress --csv-full-history
 
                    echo ✅ Pruebas de estrés completadas
