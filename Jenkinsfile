@@ -329,12 +329,15 @@ pipeline {
 
 
        stage('Run Load Tests with Locust') {
+
            when { branch 'master' }
            steps {
                script {
                    bat '''
-                   echo 🚀 Levantando Locust para order-service...
 
+                   echo 🚀 Levantando Locust para order-service...
+                    docker build -t %DOCKERHUB_USER%/locust:%IMAGE_TAG% .\\
+                    docker push %DOCKERHUB_USER%/locust:%IMAGE_TAG% .\\
                    docker run --rm --network ecommerce-test ^
                      -v "%CD%\\locust:/mnt" ^
                      -v "%CD%\\locust-results:/app" ^
