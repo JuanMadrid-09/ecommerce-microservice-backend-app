@@ -162,7 +162,7 @@ pipeline {
                    docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                       jacoboossag/service-discovery:%IMAGE_TAG%
+                       juanmadrid09/service-discovery:%IMAGE_TAG%
 
                    :wait_eureka
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8761/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -178,7 +178,7 @@ pipeline {
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
                        -e EUREKA_INSTANCE=cloud-config-container ^
-                       jacoboossag/cloud-config:%IMAGE_TAG%
+                       juanmadrid09/cloud-config:%IMAGE_TAG%
 
                    :wait_config
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:9296/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -195,7 +195,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=order-service-container ^
-                       jacoboossag/order-service:%IMAGE_TAG%
+                       juanmadrid09/order-service:%IMAGE_TAG%
 
                    :wait_order
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8300/order-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -212,7 +212,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=payment-service-container ^
-                       jacoboossag/payment-service:%IMAGE_TAG%
+                       juanmadrid09/payment-service:%IMAGE_TAG%
 
                    :wait_payment
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8400/payment-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -229,7 +229,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=product-service-container ^
-                       jacoboossag/product-service:%IMAGE_TAG%
+                       juanmadrid09/product-service:%IMAGE_TAG%
 
                    :wait_product
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8500/product-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -246,7 +246,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=shipping-service-container ^
-                       jacoboossag/shipping-service:%IMAGE_TAG%
+                       juanmadrid09/shipping-service:%IMAGE_TAG%
 
                    :wait_shipping
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8600/shipping-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -263,7 +263,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=user-service-container ^
-                       jacoboossag/user-service:%IMAGE_TAG%
+                       juanmadrid09/user-service:%IMAGE_TAG%
 
                    :wait_user
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8700/user-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
@@ -280,7 +280,7 @@ pipeline {
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                        -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                        -e EUREKA_INSTANCE=favourite-service-container ^
-                       jacoboossag/favourite-service:%IMAGE_TAG%
+                       juanmadrid09/favourite-service:%IMAGE_TAG%
 
                    :wait_favourite
                    powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8800/favourite-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
