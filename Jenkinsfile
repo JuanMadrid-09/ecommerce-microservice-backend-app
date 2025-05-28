@@ -162,7 +162,7 @@ pipeline {
                   docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
                       -e SPRING_PROFILES_ACTIVE=dev ^
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      jacoboossag/service-discovery:%IMAGE_TAG%
+                      juanmadrid09/service-discovery:%IMAGE_TAG%
 
                   :wait_eureka
                   echo "⌛ Esperando EUREKA..."
@@ -175,7 +175,7 @@ pipeline {
                       -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                       -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
                       -e EUREKA_INSTANCE=cloud-config-container ^
-                      jacoboossag/cloud-config:%IMAGE_TAG%
+                      juanmadrid09/cloud-config:%IMAGE_TAG%
 
                   :wait_config
                   echo "⌛ Esperando CLOUD-CONFIG..."
@@ -189,7 +189,7 @@ pipeline {
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=order-service-container ^
-                      jacoboossag/order-service:%IMAGE_TAG%
+                      juanmadrid09/order-service:%IMAGE_TAG%
 
                   :wait_order
                   echo "⌛ Esperando ORDER-SERVICE..."
@@ -203,7 +203,7 @@ pipeline {
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=payment-service-container ^
-                      jacoboossag/payment-service:%IMAGE_TAG%
+                      juanmadrid09/payment-service:%IMAGE_TAG%
 
                   :wait_payment
                   echo "⌛ Esperando PAYMENT-SERVICE..."
@@ -217,7 +217,7 @@ pipeline {
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=product-service-container ^
-                      jacoboossag/product-service:%IMAGE_TAG%
+                      juanmadrid09/product-service:%IMAGE_TAG%
 
                   :wait_product
                   echo "⌛ Esperando PRODUCT-SERVICE..."
@@ -231,7 +231,7 @@ pipeline {
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=shipping-service-container ^
-                      jacoboossag/shipping-service:%IMAGE_TAG%
+                      juanmadrid09/shipping-service:%IMAGE_TAG%
 
                   :wait_shipping
                   echo "⌛ Esperando SHIPPING-SERVICE..."
@@ -245,7 +245,7 @@ pipeline {
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=user-service-container ^
-                      jacoboossag/user-service:%IMAGE_TAG%
+                      juanmadrid09/user-service:%IMAGE_TAG%
 
                   :wait_user
                   echo "⌛ Esperando USER-SERVICE..."
@@ -259,7 +259,7 @@ pipeline {
                       -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
                       -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
                       -e EUREKA_INSTANCE=favourite-service-container ^
-                      jacoboossag/favourite-service:%IMAGE_TAG%
+                      juanmadrid09/favourite-service:%IMAGE_TAG%
 
                   :wait_favourite
                   echo "⌛ Esperando FAVOURITE-SERVICE..."
@@ -331,7 +331,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/order-service/locustfile.py ^
                    --host http://order-service-container:8300 ^
-                   --headless -u 10 -r 2 -t 1m ^
+                   --headless -u 10 -r 1 -t 1m ^
                    --csv order-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -340,7 +340,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/payment-service/locustfile.py ^
                    --host http://payment-service-container:8400 ^
-                   --headless -u 10 -r 2 -t 1m ^
+                   --headless -u 10 -r 1 -t 1m ^
                    --csv payment-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -349,7 +349,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/favourite-service/locustfile.py ^
                    --host http://favourite-service-container:8800 ^
-                   --headless -u 10 -r 2 -t 1m ^
+                   --headless -u 10 -r 1 -t 1m ^
                    --csv favourite-service-stress --csv-full-history
 
                    echo ✅ Pruebas de estrés completadas
