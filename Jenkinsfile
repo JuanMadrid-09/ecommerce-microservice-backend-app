@@ -156,10 +156,13 @@ pipeline {
                    bat '''
                    docker network create ecommerce-test 2>nul || echo Red ya existe
                    echo 🚀 Levantando ZIPKIN...
-                   docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
+                   docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 ^
+                       --memory=200m --cpus="0.2" ^
+                       openzipkin/zipkin
 
                    echo 🚀 Levantando EUREKA...
                    docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        juanmadrid09/service-discovery:%IMAGE_TAG%
@@ -174,6 +177,7 @@ pipeline {
 
                    echo 🚀 Levantando CLOUD-CONFIG...
                    docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
+                       --memory=350m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
@@ -190,6 +194,7 @@ pipeline {
 
                    echo 🚀 Levantando ORDER-SERVICE...
                    docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
@@ -207,6 +212,7 @@ pipeline {
 
                    echo 🚀 Levantando PAYMENT...
                    docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
@@ -224,6 +230,7 @@ pipeline {
 
                    echo 🚀 Levantando PRODUCT...
                    docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
@@ -241,6 +248,7 @@ pipeline {
 
                    echo 🚀 Levantando SHIPPING...
                    docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
@@ -258,6 +266,7 @@ pipeline {
 
                    echo 🚀 Levantando USER...
                    docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
@@ -275,6 +284,7 @@ pipeline {
 
                    echo 🚀 Levantando FAVOURITE...
                    docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 ^
+                       --memory=400m --cpus="0.3" ^
                        -e SPRING_PROFILES_ACTIVE=dev ^
                        -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
                        -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
@@ -282,20 +292,40 @@ pipeline {
                        -e EUREKA_INSTANCE=favourite-service-container ^
                        juanmadrid09/favourite-service:%IMAGE_TAG%
 
+                   echo 💤 Dando tiempo al sistema para estabilizarse...
+                   timeout /t 10 /nobreak >nul
+
                    :wait_favourite
-                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8800/favourite-service/actuator/health' -TimeoutSec 5; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
+                   set /a counter=0
+                   powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:8800/favourite-service/actuator/health' -TimeoutSec 10; if ($response.status -eq 'UP') { exit 0 } else { exit 1 } } catch { exit 1 }"
                    if %errorlevel% neq 0 (
-                       echo ⌛ Esperando FAVOURITE-SERVICE...
+                       set /a counter+=1
+                       if %counter% geq 24 (
+                           echo ❌ TIMEOUT: FAVOURITE-SERVICE no respondió en 2 minutos
+                           goto cleanup_on_error
+                       )
+                       echo ⌛ Esperando FAVOURITE-SERVICE... intento %counter%/24
                        timeout /t 5 /nobreak >nul
                        goto wait_favourite
                    )
 
                    echo ✅ Todos los contenedores están arriba y saludables.
+
+                   goto end_script
+
+                   :cleanup_on_error
+                   echo 🧹 Limpiando contenedores por timeout...
+                   docker stop favourite-service-container user-service-container shipping-service-container product-service-container payment-service-container order-service-container cloud-config-container service-discovery-container zipkin-container 2>nul
+                   docker rm favourite-service-container user-service-container shipping-service-container product-service-container payment-service-container order-service-container cloud-config-container service-discovery-container zipkin-container 2>nul
+                   docker network rm ecommerce-test 2>nul
+                   echo ❌ Pipeline falló por timeout en los servicios
+                   exit /b 1
+
+                   :end_script
                    '''
                }
            }
        }
-
 
 
        stage('Run Load Tests with Locust') {
