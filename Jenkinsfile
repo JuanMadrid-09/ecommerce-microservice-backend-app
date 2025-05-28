@@ -150,199 +150,243 @@ pipeline {
            }
        }
 
-      stage('Levantar contenedores para pruebas') {
-          steps {
-              script {
-                  bat '''
-                  docker network create ecommerce-test || true
+     stage('Levantar contenedores para pruebas') {
+         steps {
+             script {
+                 powershell '''
+                 # Función para esperar que un servicio esté saludable
+                 function Wait-ForHealthCheck {
+                     param(
+                         [string]$Url,
+                         [string]$ServiceName,
+                         [int]$TimeoutSeconds = 300
+                     )
 
-                  echo 🚀 Levantando ZIPKIN con límites reducidos...
-                  docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 ^
-                      --memory=128m --cpus=0.25 ^
-                      openzipkin/zipkin
+                     Write-Host "⌛ Esperando $ServiceName..." -ForegroundColor Yellow
+                     $startTime = Get-Date
 
-                  echo 🚀 Levantando EUREKA con límites reducidos...
-                  docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 ^
-                      --memory=256m --cpus=0.3 ^
-                      -e SPRING_PROFILES_ACTIVE=dev ^
-                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      -e JAVA_OPTS="-Xmx128m -Xms64m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication" ^
-                      juanmadrid09/service-discovery:%IMAGE_TAG%
+                     do {
+                         try {
+                             $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
+                             if ($response.status -eq "UP") {
+                                 Write-Host "✅ $ServiceName está saludable!" -ForegroundColor Green
+                                 return $true
+                             }
+                         }
+                         catch {
+                             # Continúa intentando
+                         }
 
-                  call :waitForService http://localhost:8761/actuator/health 120
+                         Start-Sleep -Seconds 5
+                         $elapsed = (Get-Date) - $startTime
 
-                  echo 🚀 Levantando CLOUD-CONFIG con límites reducidos...
-                  docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 ^
-                      --memory=256m --cpus=0.3 ^
-                      -e SPRING_PROFILES_ACTIVE=dev ^
-                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ ^
-                      -e EUREKA_INSTANCE=cloud-config-container ^
-                      -e JAVA_OPTS="-Xmx128m -Xms64m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication" ^
-                      juanmadrid09/cloud-config:%IMAGE_TAG%
+                         if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
+                             Write-Host "❌ Timeout esperando $ServiceName" -ForegroundColor Red
+                             return $false
+                         }
 
-                  call :waitForService http://localhost:9296/actuator/health 120
+                         Write-Host "⌛ Esperando $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
+                     } while ($true)
+                 }
 
-                  REM Levantar servicios DE UNO EN UNO para reducir picos de CPU
-                  echo 🚀 Levantando servicios secuencialmente...
-                  call :runServiceSequential order-service 8300
-                  call :runServiceSequential payment-service 8400
-                  call :runServiceSequential product-service 8500
-                  call :runServiceSequential shipping-service 8600
-                  call :runServiceSequential user-service 8700
-                  call :runServiceSequentialWithExtraWait favourite-service 8800
+                 # Función para esperar health check con JSON complejo
+                 function Wait-ForHealthCheckWithJq {
+                     param(
+                         [string]$Url,
+                         [string]$ServiceName,
+                         [int]$TimeoutSeconds = 300
+                     )
 
-                  echo ✅ Todos los contenedores están arriba y saludables.
-                  exit /b 0
+                     Write-Host "⌛ Esperando $ServiceName..." -ForegroundColor Yellow
+                     $startTime = Get-Date
 
-                  :runServiceSequential
-                  set "NAME=%~1"
-                  set "PORT=%~2"
-                  echo 🚀 Levantando %NAME%...
-                  docker run -d --name %NAME%-container --network ecommerce-test -p %PORT%:%PORT% ^
-                      --memory=192m --cpus=0.25 ^
-                      -e SPRING_PROFILES_ACTIVE=dev ^
-                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                      -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                      -e EUREKA_INSTANCE=%NAME%-container ^
-                      -e JAVA_OPTS="-Xmx128m -Xms64m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication -Djava.security.egd=file:/dev/./urandom" ^
-                      juanmadrid09/%NAME%:%IMAGE_TAG%
+                     do {
+                         try {
+                             $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
+                             if ($response.status -eq "UP") {
+                                 Write-Host "✅ $ServiceName está saludable!" -ForegroundColor Green
+                                 return $true
+                             }
+                         }
+                         catch {
+                             # Continúa intentando
+                         }
 
-                  REM Esperar un poco para que el contenedor inicie antes del siguiente
-                  timeout /t 15 /nobreak > nul
-                  call :waitForService http://localhost:%PORT%/%NAME%/actuator/health 120
-                  exit /b 0
+                         Start-Sleep -Seconds 5
+                         $elapsed = (Get-Date) - $startTime
 
-                  :runServiceSequentialWithExtraWait
-                  set "NAME=%~1"
-                  set "PORT=%~2"
-                  echo 🚀 Levantando %NAME% con configuración especial...
-                  docker run -d --name %NAME%-container --network ecommerce-test -p %PORT%:%PORT% ^
-                      --memory=256m --cpus=0.3 ^
-                      -e SPRING_PROFILES_ACTIVE=dev ^
-                      -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 ^
-                      -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 ^
-                      -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka ^
-                      -e EUREKA_INSTANCE=%NAME%-container ^
-                      -e JAVA_OPTS="-Xmx192m -Xms96m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication -Djava.security.egd=file:/dev/./urandom" ^
-                      juanmadrid09/%NAME%:%IMAGE_TAG%
+                         if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
+                             Write-Host "❌ Timeout esperando $ServiceName" -ForegroundColor Red
+                             return $false
+                         }
 
-                  REM Esperar más tiempo para favourite-service
-                  echo ⏳ Esperando tiempo adicional para %NAME%...
-                  timeout /t 30 /nobreak > nul
-                  call :waitForService http://localhost:%PORT%/%NAME%/actuator/health 180
+                         Write-Host "⌛ Esperando $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
+                     } while ($true)
+                 }
 
-                  REM Verificar que el endpoint de la API también esté disponible
-                  echo ⏳ Verificando endpoint de API para %NAME%...
-                  call :waitForApiEndpoint http://localhost:%PORT%/api/favourites 60
-                  exit /b 0
+                 try {
+                     # Crear red de Docker
+                     Write-Host "🌐 Creando red de Docker..." -ForegroundColor Cyan
+                     docker network create ecommerce-test 2>$null
+                     if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
+                         throw "Error creando la red de Docker"
+                     }
 
-                  :waitForService
-                  set "URL=%~1"
-                  set "TIMEOUT_SECONDS=%~2"
-                  if "%TIMEOUT_SECONDS%"=="" set "TIMEOUT_SECONDS=60"
+                     # 1. ZIPKIN
+                     Write-Host "🚀 Levantando ZIPKIN..." -ForegroundColor Cyan
+                     docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Zipkin" }
 
-                  echo ⏳ Esperando a que %URL% esté disponible (timeout: %TIMEOUT_SECONDS%s)...
-                  set /a "COUNTER=0"
-                  set /a "MAX_ATTEMPTS=%TIMEOUT_SECONDS%/15"
+                     # 2. EUREKA (Service Discovery)
+                     Write-Host "🚀 Levantando EUREKA..." -ForegroundColor Cyan
+                     docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         juanmadrid09/service-discovery:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Eureka" }
 
-                  :wait_loop
-                  set /a "COUNTER+=1"
-                  if %COUNTER% gtr %MAX_ATTEMPTS% (
-                      echo ❌ Timeout alcanzado para %URL% después de %TIMEOUT_SECONDS% segundos
-                      exit /b 1
-                  )
+                     if (!(Wait-ForHealthCheck -Url "http://localhost:8761/actuator/health" -ServiceName "EUREKA")) {
+                         throw "EUREKA no se pudo levantar correctamente"
+                     }
 
-                  curl -s --connect-timeout 5 --max-time 10 %URL% > nul 2>&1
-                  if %errorlevel% equ 0 (
-                      for /f "delims=" %%i in ('curl -s --connect-timeout 5 --max-time 10 %URL% ^| jq -r ".status" 2^>nul') do (
-                          if "%%i"=="UP" (
-                              echo ✅ %URL% está disponible
-                              goto :eof
-                          )
-                      )
-                  )
+                     # 3. CLOUD-CONFIG
+                     Write-Host "🚀 Levantando CLOUD-CONFIG..." -ForegroundColor Cyan
+                     docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ `
+                         -e EUREKA_INSTANCE=cloud-config-container `
+                         juanmadrid09/cloud-config:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Cloud Config" }
 
-                  echo . (intento %COUNTER%/%MAX_ATTEMPTS%)
-                  timeout /t 15 /nobreak > nul
-                  goto wait_loop
+                     if (!(Wait-ForHealthCheck -Url "http://localhost:9296/actuator/health" -ServiceName "CLOUD-CONFIG")) {
+                         throw "CLOUD-CONFIG no se pudo levantar correctamente"
+                     }
 
-                  :waitForApiEndpoint
-                  set "API_URL=%~1"
-                  set "TIMEOUT_SECONDS=%~2"
-                  if "%TIMEOUT_SECONDS%"=="" set "TIMEOUT_SECONDS=30"
+                     # 4. ORDER-SERVICE
+                     Write-Host "🚀 Levantando ORDER-SERVICE..." -ForegroundColor Cyan
+                     docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                         -e EUREKA_INSTANCE=order-service-container `
+                        juanmadrid09/order-service:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Order Service" }
 
-                  echo ⏳ Esperando a que endpoint API %API_URL% esté disponible...
-                  set /a "COUNTER=0"
-                  set /a "MAX_ATTEMPTS=%TIMEOUT_SECONDS%/10"
+                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8300/order-service/actuator/health" -ServiceName "ORDER-SERVICE")) {
+                         throw "ORDER-SERVICE no se pudo levantar correctamente"
+                     }
 
-                  :api_wait_loop
-                  set /a "COUNTER+=1"
-                  if %COUNTER% gtr %MAX_ATTEMPTS% (
-                      echo ⚠️ Timeout para API endpoint %API_URL%, pero continuando...
-                      goto :eof
-                  )
+                     # 5. PAYMENT-SERVICE
+                     Write-Host "🚀 Levantando PAYMENT..." -ForegroundColor Cyan
+                     docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                         -e EUREKA_INSTANCE=payment-service-container `
+                         juanmadrid09/payment-service:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Payment Service" }
 
-                  curl -s --connect-timeout 3 --max-time 8 %API_URL% > nul 2>&1
-                  if %errorlevel% equ 0 (
-                      echo ✅ API endpoint %API_URL% está respondiendo
-                      goto :eof
-                  )
+                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8400/payment-service/actuator/health" -ServiceName "PAYMENT-SERVICE")) {
+                         throw "PAYMENT-SERVICE no se pudo levantar correctamente"
+                     }
 
-                  REM También intentar con métodos HTTP específicos
-                  curl -s --connect-timeout 3 --max-time 8 -X GET %API_URL% > nul 2>&1
-                  if %errorlevel% equ 0 (
-                      echo ✅ API endpoint %API_URL% está respondiendo (GET)
-                      goto :eof
-                  )
+                     # 6. PRODUCT-SERVICE
+                     Write-Host "🚀 Levantando PRODUCT..." -ForegroundColor Cyan
+                     docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                         -e EUREKA_INSTANCE=product-service-container `
+                         juanmadrid09/product-service:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Product Service" }
 
-                  echo . (API intento %COUNTER%/%MAX_ATTEMPTS%)
-                  timeout /t 10 /nobreak > nul
-                  goto api_wait_loop
-                  '''
-              }
-          }
-      }
+                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8500/product-service/actuator/health" -ServiceName "PRODUCT-SERVICE")) {
+                         throw "PRODUCT-SERVICE no se pudo levantar correctamente"
+                     }
+
+                     # 7. SHIPPING-SERVICE
+                     Write-Host "🚀 Levantando SHIPPING..." -ForegroundColor Cyan
+                     docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                         -e EUREKA_INSTANCE=shipping-service-container `
+                        juanmadrid09/shipping-service:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Shipping Service" }
+
+                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8600/shipping-service/actuator/health" -ServiceName "SHIPPING-SERVICE")) {
+                         throw "SHIPPING-SERVICE no se pudo levantar correctamente"
+                     }
+
+                     # 8. USER-SERVICE
+                     Write-Host "🚀 Levantando USER..." -ForegroundColor Cyan
+                     docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                         -e EUREKA_INSTANCE=user-service-container `
+                         juanmadrid09/user-service:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando User Service" }
+
+                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8700/user-service/actuator/health" -ServiceName "USER-SERVICE")) {
+                         throw "USER-SERVICE no se pudo levantar correctamente"
+                     }
+
+                     # 9. FAVOURITE-SERVICE
+                     Write-Host "🚀 Levantando FAVOURITE..." -ForegroundColor Cyan
+                     docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 `
+                         -e SPRING_PROFILES_ACTIVE=dev `
+                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                         -e EUREKA_INSTANCE=favourite-service-container `
+                         juanmadrid09/favourite-service:${env:IMAGE_TAG}
+                     if ($LASTEXITCODE -ne 0) { throw "Error levantando Favourite Service" }
+
+                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8800/favourite-service/actuator/health" -ServiceName "FAVOURITE-SERVICE")) {
+                         throw "FAVOURITE-SERVICE no se pudo levantar correctamente"
+                     }
+
+                     Write-Host "✅ Todos los contenedores están arriba y saludables." -ForegroundColor Green
+                 }
+                 catch {
+                     Write-Host "❌ Error: $_" -ForegroundColor Red
+                     Write-Host "🧹 Limpiando contenedores..." -ForegroundColor Yellow
+
+                     # Cleanup en caso de error
+                     $containers = @(
+                         "favourite-service-container",
+                         "user-service-container",
+                         "shipping-service-container",
+                         "product-service-container",
+                         "payment-service-container",
+                         "order-service-container",
+                         "cloud-config-container",
+                         "service-discovery-container",
+                         "zipkin-container"
+                     )
+
+                     foreach ($container in $containers) {
+                         docker stop $container 2>$null
+                         docker rm $container 2>$null
+                     }
+
+                     docker network rm ecommerce-test 2>$null
+                     throw "Falló el levantamiento de contenedores"
+                 }
+                 '''
+             }
+         }
+     }
 
 
-      stage('Calentar servicios antes de pruebas') {
-          when { branch 'master' }
-          steps {
-              script {
-                  bat '''
-                  echo 🔥 Calentando servicios antes de las pruebas de estrés...
 
-                  echo ⏳ Realizando warmup de favourite-service...
-                  REM Hacer algunas peticiones de prueba para calentar el servicio
-                  for /l %%i in (1,1,5) do (
-                      echo Warmup request %%i/5 to favourite-service...
-                      curl -s --connect-timeout 3 --max-time 10 -X GET http://localhost:8800/api/favourites > nul 2>&1 || echo Request %%i failed, continuing...
-                      timeout /t 2 /nobreak > nul
-                  )
-
-                  echo ⏳ Realizando warmup de order-service...
-                  for /l %%i in (1,1,3) do (
-                      echo Warmup request %%i/3 to order-service...
-                      curl -s --connect-timeout 3 --max-time 10 -X GET http://localhost:8300/order-service/actuator/health > nul 2>&1 || echo Request %%i failed, continuing...
-                      timeout /t 2 /nobreak > nul
-                  )
-
-                  echo ⏳ Realizando warmup de payment-service...
-                  for /l %%i in (1,1,3) do (
-                      echo Warmup request %%i/3 to payment-service...
-                      curl -s --connect-timeout 3 --max-time 10 -X GET http://localhost:8400/payment-service/actuator/health > nul 2>&1 || echo Request %%i failed, continuing...
-                      timeout /t 2 /nobreak > nul
-                  )
-
-                  echo ⏳ Esperando tiempo adicional para estabilización...
-                  timeout /t 30 /nobreak > nul
-
-                  echo ✅ Servicios calentados y listos para pruebas de estrés
-                  '''
-              }
-          }
-      }
 
 //
 //        stage('Run Load Tests with Locust') {
