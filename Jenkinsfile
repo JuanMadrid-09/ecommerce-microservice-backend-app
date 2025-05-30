@@ -434,9 +434,9 @@ pipeline {
                     juanmadrid09/locust:%IMAGE_TAG% ^
                     -f /mnt/test/order-service/locustfile.py ^
                     --host http://order-service-container:8300 ^
-                    --headless -u 5 -r 1 -t 1m ^
+                    --headless -u 10 -r 1 -t 1m ^
                     --only-summary ^
-                    --html /mnt/locust/order-service-report.html
+                    --html /mnt/locust/stress-order-service-report.html
 
                     docker run --rm --network ecommerce-test ^
                     -v "%CD%/locust-reports:/mnt/locust" ^
@@ -445,9 +445,9 @@ pipeline {
                     juanmadrid09/locust:%IMAGE_TAG% ^
                     -f /mnt/test/payment-service/locustfile.py ^
                     --host http://payment-service-container:8400 ^
-                    --headless -u 5 -r 1 -t 1m ^
+                    --headless -u 10 -r 1 -t 1m ^
                     --only-summary ^
-                    --html /mnt/locust/payment-service-report.html
+                    --html /mnt/locust/stress-payment-service-report.html
 
                     docker run --rm --network ecommerce-test ^
                     -v "%CD%/locust-reports:/mnt/locust" ^
@@ -456,9 +456,9 @@ pipeline {
                     juanmadrid09/locust:%IMAGE_TAG% ^
                     -f /mnt/test/favourite-service/locustfile.py ^
                     --host http://favourite-service-container:8800 ^
-                    --headless -u 5 -r 1 -t 1m ^
+                    --headless -u 10 -r 1 -t 1m ^
                     --only-summary ^
-                    --html /mnt/locust/favourite-service-report.html
+                    --html /mnt/locust/stress-favourite-service-report.html
 
                     echo ✅ Stress tests completed
                     '''
