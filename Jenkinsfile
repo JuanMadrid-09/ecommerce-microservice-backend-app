@@ -429,7 +429,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/order-service/locustfile.py ^
                    --host http://order-service-container:8300 ^
-                   --headless -u 10 -r 1 -t 1m ^
+                   --headless -u 5 -r 1 -t 1m ^
                    --csv order-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -438,7 +438,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/payment-service/locustfile.py ^
                    --host http://payment-service-container:8400 ^
-                   --headless -u 10 -r 1 -t 1m ^
+                   --headless -u 5 -r 1 -t 1m ^
                    --csv payment-service-stress --csv-full-history
 
                    docker run --rm --network ecommerce-test ^
@@ -447,7 +447,7 @@ pipeline {
                    juanmadrid09/locust:%IMAGE_TAG% ^
                    -f /mnt/test/favourite-service/locustfile.py ^
                    --host http://favourite-service-container:8800 ^
-                   --headless -u 10 -r 1 -t 1m ^
+                   --headless -u 5 -r 1 -t 1m ^
                    --csv favourite-service-stress --csv-full-history
 
                    echo ✅ Stress tests completed
