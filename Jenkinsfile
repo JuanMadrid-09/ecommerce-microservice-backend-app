@@ -80,10 +80,7 @@ pipeline {
 
          stage('Unit Tests') {
                     when {
-                        anyOf {
-                            branch 'dev'; branch 'master'; branch 'stage'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                        }
+                        when { branch 'dev' }
                     }
                     steps {
                         script {
@@ -97,10 +94,7 @@ pipeline {
 
         stage('Integration Tests') {
                     when {
-                        anyOf {
-                            branch 'dev'; branch 'stage'; branch 'master'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                        }
+                        when { branch 'stage' }
                     }
                     steps {
                         script {
@@ -112,47 +106,15 @@ pipeline {
                 }
 
          stage('E2E Tests') {
-                    when {
-                        anyOf {
-                            branch 'stage'; branch 'master'
-                        }
-                    }
+                    when { branch 'stage' }
                     steps {
                         bat "mvn verify -pl e2e-tests"
                     }
                 }
 
 
-
-       stage('Build & Package') {
-                   when { anyOf { branch 'master'; branch 'stage' } }
-                   steps {
-                       bat "mvn clean package -DskipTests"
-                   }
-               }
-
-       stage('Build & Push Docker Images') {
-           when { anyOf { branch 'stage'; branch 'master' } }
-           steps {
-               withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
-                   bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
-
-                   script {
-                       SERVICES.split().each { service ->
-                           bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
-                           bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
-                       }
-                   }
-               }
-           }
-       }
-
      stage('Start containers for testing') {
-              when {
-                              anyOf {
-                                  branch 'stage'
-                              }
-                          }
+              when { branch 'stage' }
          steps {
              script {
                  powershell '''
@@ -393,11 +355,7 @@ pipeline {
 
 
        stage('Run Load Tests with Locust') {
-          when {
-                      anyOf {
-                          branch 'stage'
-                      }
-                 }
+           when { branch 'stage' }
            steps {
                script {
                    bat '''
@@ -441,11 +399,7 @@ pipeline {
        }
 
        stage('Run Stress Tests with Locust') {
-               when {
-                   anyOf {
-                       branch 'stage'
-                   }
-               }
+                when { branch 'stage' }
            steps {
                script {
                    bat '''
@@ -487,12 +441,7 @@ pipeline {
 
 
        stage('Stop and remove containers') {
-                when {
-                        anyOf {
-                            branch 'dev'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                        }
-                    }
+                 when { branch 'stage' }
            steps {
                script {
                    bat """
@@ -515,15 +464,39 @@ pipeline {
            }
        }
 
+       stage('Build & Package') {
+                                  when { anyOf { branch 'master'; branch 'stage' ; branch 'dev'} }
+                                  steps {
+                                      bat "mvn clean package -DskipTests"
+                                  }
+                              }
+
+                      stage('Build & Push Docker Images') {
+                           when { anyOf { branch 'master'; branch 'stage' ; branch 'dev'} }
+                          steps {
+                              withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
+                                  bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
+
+                                  script {
+                                      SERVICES.split().each { service ->
+                                          bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
+                                          bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
+                                      }
+                                  }
+                              }
+                          }
+                      }
+
+
         stage('Deploy Common Config') {
-            when { anyOf { branch 'stage'; branch 'master' } }
+             when { branch 'master' }
             steps {
                 bat "kubectl apply -f k8s\\common-config.yaml -n ${K8S_NAMESPACE}"
             }
         }
 
         stage('Deploy Core Services') {
-             when { anyOf { branch 'stage'; branch 'master' } }
+              when { branch 'master' }
             steps {
                 bat "kubectl apply -f k8s\\zipkin -n ${K8S_NAMESPACE}"
                 bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=200s"
@@ -541,7 +514,7 @@ pipeline {
 
 
          stage('Deploy Microservices') {
-                    when { anyOf { branch 'stage'; branch 'master' } }
+                     when { branch 'master' }
                     steps {
                         script {
                             echo "👻👻👻👻👻"
