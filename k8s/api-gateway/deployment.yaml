@@ -96,16 +96,18 @@ spec:
           httpGet:
             path: /actuator/health
             port: 8080
-          initialDelaySeconds: 90
-          periodSeconds: 10
-          failureThreshold: 3
+          initialDelaySeconds: 240
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
         readinessProbe:
           httpGet:
             path: /actuator/health
             port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 5
-          failureThreshold: 3
+          initialDelaySeconds: 240
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
         volumeMounts:
         - name: common-config-volume
           mountPath: /app/config
