@@ -515,24 +515,21 @@ pipeline {
             }
         }
 
-
-
          stage('Deploy Microservices') {
-                     when { anyOf { branch 'master'; } }
-                    steps {
-                        script {
-                            echo "👻👻👻👻👻"
-//                             SERVICES.split().each { svc ->
-//                                 if (!['user-service', ].contains(svc)) {
-//                                     bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
-//                                     bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-//                                     bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
-//                                     bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=400s"
-//                                 }
-//                             }
-                        }
-                    }
-                }
+             when { anyOf { branch 'master'; } }
+             steps {
+                 script {
+                     def appServices = ['user-service', 'product-service']
+                     echo "👻"
+                     appServices.each { svc ->
+                         bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
+                         bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
+                         bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
+                         bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=400s"
+                     }
+                 }
+             }
+         }
 
         stage('Generate Release Notes') {
             when {
