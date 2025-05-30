@@ -368,94 +368,103 @@ pipeline {
          }
      }
 
+        stage('Run Load Tests with Locust') {
+            when { anyOf { branch 'stage'; } }
+            steps {
+                script {
+                    bat '''
+                    echo 🚀 Starting Locust for order-service...
 
+                    if not exist locust-reports mkdir locust-reports
 
+                    docker run --rm --network ecommerce-test ^
+                    -v "%CD%/locust-reports:/mnt/locust" ^
+                    -v "%CD%/locust:/mnt" ^
+                    -v "%CD%/locust-results:/app" ^
+                    juanmadrid09/locust:%IMAGE_TAG% ^
+                    -f /mnt/test/order-service/locustfile.py ^
+                    --host http://order-service-container:8300 ^
+                    --headless -u 5 -r 1 -t 1m ^
+                    --only-summary ^
+                    --html /mnt/locust/order-service-report.html
 
+                    echo 🚀 Starting Locust for payment-service...
 
-       stage('Run Load Tests with Locust') {
-           when { anyOf { branch 'stage'; } }
-           steps {
-               script {
-                   bat '''
+                    docker run --rm --network ecommerce-test ^
+                    -v "%CD%/locust-reports:/mnt/locust" ^
+                    -v "%CD%/locust:/mnt" ^
+                    -v "%CD%/locust-results:/app" ^
+                    juanmadrid09/locust:%IMAGE_TAG% ^
+                    -f /mnt/test/payment-service/locustfile.py ^
+                    --host http://payment-service-container:8400 ^
+                    --headless -u 5 -r 1 -t 1m ^
+                    --only-summary ^
+                    --html /mnt/locust/payment-service-report.html
 
-                   echo 🚀 Starting Locust for order-service...
-                   docker run --rm --network ecommerce-test ^
-                     -v "%CD%\\locust:/mnt" ^
-                     -v "%CD%\\locust-results:/app" ^
-                     juanmadrid09/locust:%IMAGE_TAG% ^
-                     -f /mnt/test/order-service/locustfile.py ^
-                     --host http://order-service-container:8300 ^
-                     --headless -u 5 -r 1 -t 1m ^
-                     --csv order-service-stats --csv-full-history
+                    echo 🚀 Starting Locust for favourite-service...
 
-                   echo 🚀 Starting Locust for payment-service...
+                    docker run --rm --network ecommerce-test ^
+                    -v "%CD%/locust-reports:/mnt/locust" ^
+                    -v "%CD%/locust:/mnt" ^
+                    -v "%CD%/locust-results:/app" ^
+                    juanmadrid09/locust:%IMAGE_TAG% ^
+                    -f /mnt/test/favourite-service/locustfile.py ^
+                    --host http://favourite-service-container:8800 ^
+                    --headless -u 5 -r 1 -t 1m ^
+                    --only-summary ^
+                    --html /mnt/locust/favourite-service-report.html
 
-                   docker run --rm --network ecommerce-test ^
-                     -v "%CD%\\locust:/mnt" ^
-                     -v "%CD%\\locust-results:/app" ^
-                     juanmadrid09/locust:%IMAGE_TAG% ^
-                     -f /mnt/test/payment-service/locustfile.py ^
-                     --host http://payment-service-container:8400 ^
-                     --headless -u 5 -r 1 -t 1m ^
-                     --csv payment-service-stats --csv-full-history
+                    echo ✅ Tests completed
+                    '''
+                }
+            }
+        }
 
-                   echo 🚀 Starting Locust for favourite-service...
+        stage('Run Stress Tests with Locust') {
+            when { anyOf { branch 'stage'; } }
+            steps {
+                script {
+                    bat '''
+                    echo 🔥 Starting Locust for stress testing...
 
-                   docker run --rm --network ecommerce-test ^
-                     -v "%CD%\\locust:/mnt" ^
-                     -v "%CD%\\locust-results:/app" ^
-                     juanmadrid09/locust:%IMAGE_TAG% ^
-                     -f /mnt/test/favourite-service/locustfile.py ^
-                     --host http://favourite-service-container:8800 ^
-                     --headless -u 5 -r 1 -t 1m ^
-                     --csv favourite-service-stats --csv-full-history
+                    docker run --rm --network ecommerce-test ^
+                    -v "%CD%/locust-reports:/mnt/locust" ^
+                    -v "%CD%/locust:/mnt" ^
+                    -v "%CD%/locust-results:/app" ^
+                    juanmadrid09/locust:%IMAGE_TAG% ^
+                    -f /mnt/test/order-service/locustfile.py ^
+                    --host http://order-service-container:8300 ^
+                    --headless -u 5 -r 1 -t 1m ^
+                    --only-summary ^
+                    --html /mnt/locust/order-service-report.html
 
-                   echo ✅ Tests completed
-                   '''
-               }
-           }
-       }
+                    docker run --rm --network ecommerce-test ^
+                    -v "%CD%/locust-reports:/mnt/locust" ^
+                    -v "%CD%/locust:/mnt" ^
+                    -v "%CD%/locust-results:/app" ^
+                    juanmadrid09/locust:%IMAGE_TAG% ^
+                    -f /mnt/test/payment-service/locustfile.py ^
+                    --host http://payment-service-container:8400 ^
+                    --headless -u 5 -r 1 -t 1m ^
+                    --only-summary ^
+                    --html /mnt/locust/payment-service-report.html
 
-       stage('Run Stress Tests with Locust') {
-                when { anyOf { branch 'stage'; } }
-           steps {
-               script {
-                   bat '''
-                   echo 🔥 Starting Locust for stress testing...
+                    docker run --rm --network ecommerce-test ^
+                    -v "%CD%/locust-reports:/mnt/locust" ^
+                    -v "%CD%/locust:/mnt" ^
+                    -v "%CD%/locust-results:/app" ^
+                    juanmadrid09/locust:%IMAGE_TAG% ^
+                    -f /mnt/test/favourite-service/locustfile.py ^
+                    --host http://favourite-service-container:8800 ^
+                    --headless -u 5 -r 1 -t 1m ^
+                    --only-summary ^
+                    --html /mnt/locust/favourite-service-report.html
 
-                   docker run --rm --network ecommerce-test ^
-                   -v "%CD%\\locust:/mnt" ^
-                   -v "%CD%\\locust-results:/app" ^
-                   juanmadrid09/locust:%IMAGE_TAG% ^
-                   -f /mnt/test/order-service/locustfile.py ^
-                   --host http://order-service-container:8300 ^
-                   --headless -u 5 -r 1 -t 1m ^
-                   --csv order-service-stress --csv-full-history
-
-                   docker run --rm --network ecommerce-test ^
-                   -v "%CD%\\locust:/mnt" ^
-                   -v "%CD%\\locust-results:/app" ^
-                   juanmadrid09/locust:%IMAGE_TAG% ^
-                   -f /mnt/test/payment-service/locustfile.py ^
-                   --host http://payment-service-container:8400 ^
-                   --headless -u 5 -r 1 -t 1m ^
-                   --csv payment-service-stress --csv-full-history
-
-                   docker run --rm --network ecommerce-test ^
-                   -v "%CD%\\locust:/mnt" ^
-                   -v "%CD%\\locust-results:/app" ^
-                   juanmadrid09/locust:%IMAGE_TAG% ^
-                   -f /mnt/test/favourite-service/locustfile.py ^
-                   --host http://favourite-service-container:8800 ^
-                   --headless -u 5 -r 1 -t 1m ^
-                   --csv favourite-service-stress --csv-full-history
-
-                   echo ✅ Stress tests completed
-                   '''
-               }
-           }
-       }
-
+                    echo ✅ Stress tests completed
+                    '''
+                }
+            }
+        }
 
 
        stage('Stop and remove containers') {
@@ -546,8 +555,14 @@ pipeline {
 
                 if (env.BRANCH_NAME == 'master') {
                     echo "🚀 Production deployment completed successfully!"
-                } else if (env.BRANCH_NAME == 'release') {
+                } else if (env.BRANCH_NAME == 'stage') {
                     echo "🎯 Staging deployment completed successfully!"
+                    publishHTML([
+                        reportDir: 'locust-reports',
+                        reportFiles: 'order-service-report.html, payment-service-report.html, favourite-service-report.html',
+                        reportName: 'Locust Stress Test Reports',
+                        keepAll: true
+                    ])
                 } else {
                     echo "🔧 Development tests completed successfully!"
                 }
