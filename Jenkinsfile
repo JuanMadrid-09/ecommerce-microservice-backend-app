@@ -81,7 +81,7 @@ pipeline {
          stage('Unit Tests') {
                     when {
                         anyOf {
-                            branch 'dev'; branch 'master'; branch 'release'
+                            branch 'dev'; branch 'master'; branch 'stage'
                             expression { env.BRANCH_NAME.startsWith('feature/') }
                         }
                     }
@@ -98,9 +98,8 @@ pipeline {
         stage('Integration Tests') {
                     when {
                         anyOf {
-                            branch 'master'
+                            branch 'dev'; branch 'stage'; branch 'master'
                             expression { env.BRANCH_NAME.startsWith('feature/') }
-                            allOf { not { branch 'master' }; not { branch 'release' } }
                         }
                     }
                     steps {
@@ -115,9 +114,7 @@ pipeline {
          stage('E2E Tests') {
                     when {
                         anyOf {
-                            branch 'master'
-                            expression { env.BRANCH_NAME.startsWith('feature/') }
-                            allOf { not { branch 'master' }; not { branch 'release' } }
+                            branch 'stage'; branch 'master'
                         }
                     }
                     steps {
@@ -152,11 +149,10 @@ pipeline {
 
      stage('Start containers for testing') {
               when {
-                     anyOf {
-                         branch 'dev'
-                         expression { env.BRANCH_NAME.startsWith('feature/') }
-                     }
-                 }
+                              anyOf {
+                                  branch 'stage'
+                              }
+                          }
          steps {
              script {
                  powershell '''
@@ -397,13 +393,11 @@ pipeline {
 
 
        stage('Run Load Tests with Locust') {
-
-           when {
-                           anyOf {
-                               branch 'dev'
-                               expression { env.BRANCH_NAME.startsWith('feature/') }
-                           }
-                       }
+          when {
+                      anyOf {
+                          branch 'stage'
+                      }
+                 }
            steps {
                script {
                    bat '''
@@ -447,12 +441,11 @@ pipeline {
        }
 
        stage('Run Stress Tests with Locust') {
-           when {
-                          anyOf {
-                              branch 'dev'
-                              expression { env.BRANCH_NAME.startsWith('feature/') }
-                          }
-                      }
+               when {
+                   anyOf {
+                       branch 'stage'
+                   }
+               }
            steps {
                script {
                    bat '''
@@ -495,11 +488,11 @@ pipeline {
 
        stage('Stop and remove containers') {
                 when {
-                       anyOf {
-                           branch 'dev'
-                           expression { env.BRANCH_NAME.startsWith('feature/') }
-                       }
-                   }
+                        anyOf {
+                            branch 'dev'
+                            expression { env.BRANCH_NAME.startsWith('feature/') }
+                        }
+                    }
            steps {
                script {
                    bat """
