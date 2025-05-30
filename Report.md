@@ -81,7 +81,7 @@ Validate the business logic of each component in isolation using JUnit and Mocki
 - Status: ✅ All unit tests passed with 100% success
 - Coverage: Critical business logic components validated
 
-![unit](image-6.png)
+![unit](images/image-6.png)
 
 ####  Integration Tests
 
@@ -114,7 +114,7 @@ Validates the interaction between components within a microservice and inter-ser
 - Status: ✅ All integration tests passed
 - Validated Communication Flows: 5 inter-service communication patterns validated
 
-![integration](image-4.png)
+![integration](images/image-4.png)
 
 ####  E2E (End-to-End) Tests
 
@@ -161,7 +161,7 @@ Simulate complete user flows across multiple microservices, validating the actua
 - Status: ✅ All E2E tests passed
 - Validated User Flows: 5 complete business processes validated
 
-![e2e](image-5.png)
+![e2e](images/image-5.png)
 
 ####  Performance Tests with Locust
 
@@ -211,7 +211,7 @@ class EcommerceUser(HttpUser):
 **Analysis of payment-service Load Test:**
 The payment service showed very good performance under normal load. The average and median response times are low, indicating that most requests are processed quickly. The absence of failures is a positive indicator of stability. However, the 95th and 99th percentiles are significantly higher, which suggests that a small percentage of transactions experience high latencies.
 
-![alt text](image-8.png)
+![alt text](images/image-8.png)
 
 **Stress Test Report:**
 - Average Response Time: 22 ms
@@ -225,7 +225,7 @@ The payment service showed very good performance under normal load. The average 
 **Analysis of payment-service Stress Test:**
 Under stress conditions, the payment-service maintained excellent average and median response times, even with a higher number of requests and a higher RPS. The error rate remains at 0%, which is crucial for a payment service.
 
-![stress](image-7.png)
+![stress](images/image-7.png)
 
 #####  order-service
 
@@ -241,7 +241,7 @@ Under stress conditions, the payment-service maintained excellent average and me
 **Analysis of order-service Load Test:**
 The order-service showed a very low median response time (12 ms), which is excellent. However, the average response time is considerably higher (100.72 ms), and the 99th percentile reaches 3300 ms. This large difference suggests that, although most requests are fast, some experience very high latencies.
 
-![order](image-9.png)
+![order](images/image-9.png)
 
 **Stress Test Report:**
 - Average Response Time: 8.86 ms
@@ -255,7 +255,7 @@ The order-service showed a very low median response time (12 ms), which is excel
 **Analysis of order-service Stress Test:**
 Surprisingly, under stress, the order-service showed significant improvement in all response times compared to the load test. This is an excellent result and indicates a very robust service under these conditions.
 
-![stressO](image-10.png)
+![stressO](images/image-10.png)
 
 #####  favourite-service
 
@@ -271,7 +271,7 @@ Surprisingly, under stress, the order-service showed significant improvement in 
 **Analysis of favourite-service Load Test:**
 The favourite-service presents the highest response times in the load test, with an average of 571.09 ms and a P99 of 11000 ms (11 seconds). Although the median is more acceptable (110 ms), the high average and extreme P99 indicate that a significant portion of requests are very slow.
 
-![favouriteee](image-12.png)
+![favouriteee](images/image-12.png)
 
 **Stress Test Report:**
 - Average Response Time: 156.33 ms
@@ -285,7 +285,7 @@ The favourite-service presents the highest response times in the load test, with
 **Analysis of favourite-service Stress Test:**
 Under stress, the favourite-service showed a substantial improvement in average response time (from 571 ms to 156 ms) and a drastic reduction in P99 (from 11000 ms to 830 ms) compared to the load test.
 
-![favourite](image-11.png)
+![favourite](images/image-11.png)
 
 ###  Docker and Dockerfiles Configuration
 
@@ -311,13 +311,13 @@ k8s/
 
 #### Configuration
 
-![configuration](image-3.png)
+![configuration](images/image-3.png)
 
 Declarative pipelines were implemented in Jenkins, differentiated by environment (dev, stage, master), to automate the construction, tests, and deployment.
 
 ####  Development Environment Pipeline (dev)
 
-![dev](<Captura de pantalla 2025-05-30 164404.png>)
+![configuration](images/1.png)
 
 - Focused on experimentation and rapid change validation
 - Flow: Checkout, Build & Test (Unit), Docker Build & Push, Deploy to Dev,Generate Comprehensive Release Notes
@@ -327,7 +327,7 @@ The development pipeline successfully established the foundational CI/CD workflo
 
 ####  Staging Environment Pipeline (stage)
 
-![stage](<Captura de pantalla 2025-05-30 164246.png>)
+![stage](images/4.png)
 
 - Simulates production conditions for exhaustive validations
 - Flow: Checkout, Comprehensive Test Suite (Unit, Integration, E2E), Build & Package, Docker Build & Push,Performance & Stress Tests,Generate Comprehensive Release Notes
@@ -337,7 +337,7 @@ The staging pipeline extended development capabilities with full deployment orch
 
 ####  Deployment Pipeline (master / Production)
 
-![master](<Captura de pantalla 2025-05-30 164342.png>)
+![master](images/5.png)
 
 - The most critical environment, with additional validations and release notes generation
 - Flow: Checkout, Critical Test Execution, Build & Package, Production Docker Build & Push, Deploy Infrastructure Services, Deploy Application Services, System Validation Tests, Generate Comprehensive Release Notes
@@ -345,7 +345,7 @@ The staging pipeline extended development capabilities with full deployment orch
 **Results:**
 The production pipeline implemented strict quality gates with zero-tolerance for failures and comprehensive performance validation.
 
-![all](<Captura de pantalla 2025-05-30 010730.png>)
+![all](images/2.png)
 
 **Key Metrics:**
 - **Build Success Rate:** 100%
@@ -353,7 +353,7 @@ The production pipeline implemented strict quality gates with zero-tolerance for
 - **Docker Images Generated:** 9 microservices
 - **Test Execution:** All test suites passed
 
-![services](<Captura de pantalla 2025-05-30 133119.png>)
+![services](images/3.png)
 
 ## Implemented Deployments
 
@@ -361,10 +361,11 @@ The production pipeline implemented strict quality gates with zero-tolerance for
 
 An initial deployment was made to AKS, successfully deploying 6 out of 11 services before exhausting student credits.
 
-###  Minikube (Local Solution)
+###  Minikube 
 
-Due to cloud resource limitations, the environment was migrated to a local Minikube setup, optimizing the configuration for limited hardware (MacBook Air M2, 8GB RAM).
+Due to cloud resource limitations, the environment was migrated to a local Minikube setup, optimizing the configuration for limited hardware 
 
+![minukube](images/image-13.png)
 
 ## Impact and Benefits
 
@@ -429,7 +430,7 @@ This project successfully demonstrated the implementation of a modern microservi
 
 **Release Notes - Build 9**
 
-![RELEASENOTES](image.png)
+![RELEASENOTES](images/image.png)
 
 **Build Information**
 - Build Number: 10
@@ -466,7 +467,7 @@ This project successfully demonstrated the implementation of a modern microservi
 
 **Release Notes - Build 10**
 
-![RELEASE2](image-1.png)
+![RELEASE2](images/image-1.png)
 
 **Build Information**
 - Build Number: 11
@@ -484,7 +485,7 @@ This project successfully demonstrated the implementation of a modern microservi
 
 **Release Notes - Build 100**
 
-![alt text](image-2.png)
+![alt text](images/image-2.png)
 
 
 **Build Information**
