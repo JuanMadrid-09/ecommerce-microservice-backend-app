@@ -12,6 +12,8 @@ pipeline {
         SERVICES = 'api-gateway cloud-config favourite-service order-service payment-service product-service proxy-client service-discovery shipping-service user-service locust'
         K8S_NAMESPACE = 'ecommerce'
         KUBECONFIG = 'C:\\Users\\ACER\\.kube\\config'
+        // Semantic versioning variables
+        VERSION_FILE = 'version.txt'
     }
 
     parameters {
@@ -40,16 +42,6 @@ pipeline {
             defaultValue: "${env.BUILD_ID}",
             description: 'Tag for release notes identification'
         )
-    }
-
-    environment {
-        DOCKERHUB_USER = 'juanmadrid09'
-        DOCKER_CREDENTIALS_ID = 'password'
-        SERVICES = 'api-gateway cloud-config favourite-service order-service payment-service product-service proxy-client service-discovery shipping-service user-service locust'
-        K8S_NAMESPACE = 'ecommerce'
-        KUBECONFIG = 'C:\\Users\\ACER\\.kube\\config'
-        // Semantic versioning variables
-        VERSION_FILE = 'version.txt'
     }
 
     stages {
@@ -133,173 +125,8 @@ pipeline {
                 bat 'mvn -version'
                 bat 'docker --version'
                 bat 'kubectl config current-context'
-
             }
         }
-
-/*
-        stage('Run Load Tests with Locust') {
-            when { anyOf { branch 'stage'; } }
-            steps {
-                script {
-                    bat '''
-                    echo 🚀 Starting Locust for order-service...
-
-                    if not exist locust-reports mkdir locust-reports
-
-                    docker run --rm --network ecommerce-test ^
-                    -v "%CD%/locust-reports:/mnt/locust" ^
-                    -v "%CD%/locust:/mnt" ^
-                    -v "%CD%/locust-results:/app" ^
-                    juanmadrid09/locust:%IMAGE_TAG% ^
-                    -f /mnt/test/order-service/locustfile.py ^
-                    --host http://order-service-container:8300 ^
-                    --headless -u 5 -r 1 -t 1m ^
-                    --only-summary ^
-                    --html /mnt/locust/order-service-report.html
-
-                    echo 🚀 Starting Locust for payment-service...
-
-                    docker run --rm --network ecommerce-test ^
-                    -v "%CD%/locust-reports:/mnt/locust" ^
-                    -v "%CD%/locust:/mnt" ^
-                    -v "%CD%/locust-results:/app" ^
-                    juanmadrid09/locust:%IMAGE_TAG% ^
-                    -f /mnt/test/payment-service/locustfile.py ^
-                    --host http://payment-service-container:8400 ^
-                    --headless -u 5 -r 1 -t 1m ^
-                    --only-summary ^
-                    --html /mnt/locust/payment-service-report.html
-
-                    echo 🚀 Starting Locust for favourite-service...
-
-                    docker run --rm --network ecommerce-test ^
-                    -v "%CD%/locust-reports:/mnt/locust" ^
-                    -v "%CD%/locust:/mnt" ^
-                    -v "%CD%/locust-results:/app" ^
-                    juanmadrid09/locust:%IMAGE_TAG% ^
-                    -f /mnt/test/favourite-service/locustfile.py ^
-                    --host http://favourite-service-container:8800 ^
-                    --headless -u 5 -r 1 -t 1m ^
-                    --only-summary ^
-                    --html /mnt/locust/favourite-service-report.html
-
-                    echo ✅ Tests completed
-                    '''
-                }
-            }
-        }
-
-        stage('Run Stress Tests with Locust') {
-            when { anyOf { branch 'stage'; } }
-            steps {
-                script {
-                    bat '''
-                    echo 🔥 Starting Locust for stress testing...
-
-                    docker run --rm --network ecommerce-test ^
-                    -v "%CD%/locust-reports:/mnt/locust" ^
-                    -v "%CD%/locust:/mnt" ^
-                    -v "%CD%/locust-results:/app" ^
-                    juanmadrid09/locust:%IMAGE_TAG% ^
-                    -f /mnt/test/order-service/locustfile.py ^
-                    --host http://order-service-container:8300 ^
-                    --headless -u 10 -r 1 -t 1m ^
-                    --only-summary ^
-                    --html /mnt/locust/stress-order-service-report.html
-
-                    docker run --rm --network ecommerce-test ^
-                    -v "%CD%/locust-reports:/mnt/locust" ^
-                    -v "%CD%/locust:/mnt" ^
-                    -v "%CD%/locust-results:/app" ^
-                    juanmadrid09/locust:%IMAGE_TAG% ^
-                    -f /mnt/test/payment-service/locustfile.py ^
-                    --host http://payment-service-container:8400 ^
-                    --headless -u 10 -r 1 -t 1m ^
-                    --only-summary ^
-                    --html /mnt/locust/stress-payment-service-report.html
-
-                    docker run --rm --network ecommerce-test ^
-                    -v "%CD%/locust-reports:/mnt/locust" ^
-                    -v "%CD%/locust:/mnt" ^
-                    -v "%CD%/locust-results:/app" ^
-                    juanmadrid09/locust:%IMAGE_TAG% ^
-                    -f /mnt/test/favourite-service/locustfile.py ^
-                    --host http://favourite-service-container:8800 ^
-                    --headless -u 10 -r 1 -t 1m ^
-                    --only-summary ^
-                    --html /mnt/locust/stress-favourite-service-report.html
-
-                    echo ✅ Stress tests completed
-                    '''
-                }
-            }
-        }
-
-        stage('Stop and remove containers') {
-            when { anyOf { branch 'stage'; } }
-            steps {
-                script {
-                    bat """
-                    echo 🛑 Stopping and removing containers...
-
-                    docker rm -f locust || exit 0
-                    docker rm -f favourite-service-container || exit 0
-                    docker rm -f user-service-container || exit 0
-                    docker rm -f shipping-service-container || exit 0
-                    docker rm -f product-service-container || exit 0
-                    docker rm -f payment-service-container || exit 0
-                    docker rm -f order-service-container || exit 0
-                    docker rm -f cloud-config-container || exit 0
-                    docker rm -f service-discovery-container || exit 0
-                    docker rm -f zipkin-container || exit 0
-
-                    echo 🧹 All containers removed
-                    """
-                }
-            }
-        }
-
-        stage('Deploy Common Config') {
-            when { anyOf { branch 'master'; } }
-            steps {
-                bat "kubectl apply -f k8s\\common-config.yaml -n ${K8S_NAMESPACE}"
-            }
-        }
-
-        stage('Deploy Core Services') {
-            when { anyOf { branch 'master'; } }
-            steps {
-                bat "kubectl apply -f k8s\\zipkin -n ${K8S_NAMESPACE}"
-                bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=200s"
-
-                bat "kubectl apply -f k8s\\service-discovery -n ${K8S_NAMESPACE}"
-                bat "kubectl set image deployment/service-discovery service-discovery=${DOCKERHUB_USER}/service-discovery:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-                bat "kubectl rollout status deployment/service-discovery -n ${K8S_NAMESPACE} --timeout=400s"
-
-                bat "kubectl apply -f k8s\\cloud-config -n ${K8S_NAMESPACE}"
-                bat "kubectl set image deployment/cloud-config cloud-config=${DOCKERHUB_USER}/cloud-config:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-                bat "kubectl rollout status deployment/cloud-config -n ${K8S_NAMESPACE} --timeout=350s"
-            }
-        }
-
-        stage('Deploy Microservices') {
-            when { anyOf { branch 'master'; } }
-            steps {
-                script {
-                    def appServices = ['user-service']
-                    echo "👻"
-                    appServices.each { svc ->
-                        bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
-                        bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-                        bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
-                        bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=400s"
-                    }
-                }
-            }
-        }
-
-        */
 
         stage('Generate Release Notes') {
             when {
@@ -360,6 +187,74 @@ pipeline {
             }
         }
     }
+}
+
+// Version management functions
+def getCurrentVersion() {
+    def version = bat(returnStdout: true, script: """
+        if exist ${env.VERSION_FILE} (
+            type ${env.VERSION_FILE}
+        ) else (
+            mvn help:evaluate -Dexpression=project.version -q -DforceStdout
+        )
+    """).trim()
+    
+    return version.replaceAll('-SNAPSHOT', '')
+}
+
+def calculateNextVersion(currentVersion, versionType) {
+    def (major, minor, patch) = currentVersion.tokenize('.')
+    
+    switch(versionType) {
+        case 'AUTO':
+            return calculateAutoVersion(currentVersion)
+        case 'PATCH':
+            return "${major}.${minor}.${(patch as int) + 1}"
+        case 'MINOR':
+            return "${major}.${(minor as int) + 1}.0"
+        case 'MAJOR':
+            return "${(major as int) + 1}.0.0"
+        default:
+            return calculateAutoVersion(currentVersion)
+    }
+}
+
+def calculateAutoVersion(currentVersion) {
+    // Get commit messages since last tag
+    def commitMessages = bat(returnStdout: true, script: """
+        git log $(git describe --tags --abbrev=0 2>nul || echo HEAD~10)..HEAD --pretty=format:"%%s" || echo ""
+    """).trim()
+    
+    def (major, minor, patch) = currentVersion.tokenize('.')
+    
+    // Determine version bump based on commit messages
+    if (commitMessages.contains('BREAKING CHANGE') || commitMessages.contains('!:')) {
+        return "${(major as int) + 1}.0.0"
+    } else if (commitMessages.contains('feat:') || commitMessages.contains('feature:')) {
+        return "${major}.${(minor as int) + 1}.0"
+    } else {
+        return "${major}.${minor}.${(patch as int) + 1}"
+    }
+}
+
+def updateVersionFiles(version) {
+    // Update version.txt
+    writeFile file: env.VERSION_FILE, text: version
+    
+    // Update main pom.xml
+    bat """
+        mvn versions:set -DnewVersion=${version} -DgenerateBackupPoms=false
+        mvn versions:commit
+    """
+    
+    // Update microservices pom files
+    bat """
+        for /r %%f in (pom.xml) do (
+            if not "%%~dpf"=="%cd%\\target\\" (
+                mvn versions:set -DnewVersion=${version} -DgenerateBackupPoms=false -f "%%f"
+            )
+        )
+    """
 }
 
 def generateReleaseNotes() {
@@ -501,72 +396,4 @@ def shouldRunIntegrationTests() {
 def shouldRunE2ETests() {
     return env.BRANCH_NAME == 'master' || env.BRANCH_NAME.startsWith('feature/') ||
            (env.BRANCH_NAME != 'master' && env.BRANCH_NAME != 'release')
-}
-
-// Version management functions
-def getCurrentVersion() {
-    def version = bat(returnStdout: true, script: """
-        if exist ${env.VERSION_FILE} (
-            type ${env.VERSION_FILE}
-        ) else (
-            mvn help:evaluate -Dexpression=project.version -q -DforceStdout
-        )
-    """).trim()
-    
-    return version.replaceAll('-SNAPSHOT', '')
-}
-
-def calculateNextVersion(currentVersion, versionType) {
-    def (major, minor, patch) = currentVersion.tokenize('.')
-    
-    switch(versionType) {
-        case 'AUTO':
-            return calculateAutoVersion(currentVersion)
-        case 'PATCH':
-            return "${major}.${minor}.${(patch as int) + 1}"
-        case 'MINOR':
-            return "${major}.${(minor as int) + 1}.0"
-        case 'MAJOR':
-            return "${(major as int) + 1}.0.0"
-        default:
-            return calculateAutoVersion(currentVersion)
-    }
-}
-
-def calculateAutoVersion(currentVersion) {
-    // Get commit messages since last tag
-    def commitMessages = bat(returnStdout: true, script: """
-        git log $(git describe --tags --abbrev=0 2>nul || echo HEAD~10)..HEAD --pretty=format:"%%s" || echo ""
-    """).trim()
-    
-    def (major, minor, patch) = currentVersion.tokenize('.')
-    
-    // Determine version bump based on commit messages
-    if (commitMessages.contains('BREAKING CHANGE') || commitMessages.contains('!:')) {
-        return "${(major as int) + 1}.0.0"
-    } else if (commitMessages.contains('feat:') || commitMessages.contains('feature:')) {
-        return "${major}.${(minor as int) + 1}.0"
-    } else {
-        return "${major}.${minor}.${(patch as int) + 1}"
-    }
-}
-
-def updateVersionFiles(version) {
-    // Update version.txt
-    writeFile file: env.VERSION_FILE, text: version
-    
-    // Update main pom.xml
-    bat """
-        mvn versions:set -DnewVersion=${version} -DgenerateBackupPoms=false
-        mvn versions:commit
-    """
-    
-    // Update microservices pom files
-    bat """
-        for /r %%f in (pom.xml) do (
-            if not "%%~dpf"=="%cd%\\target\\" (
-                mvn versions:set -DnewVersion=${version} -DgenerateBackupPoms=false -f "%%f"
-            )
-        )
-    """
 }
