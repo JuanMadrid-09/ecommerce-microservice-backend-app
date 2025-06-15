@@ -15,6 +15,21 @@ pipeline {
     }
 
     parameters {
+        choice(
+            name: 'VERSION_TYPE',
+            choices: ['AUTO', 'PATCH', 'MINOR', 'MAJOR'],
+            description: 'Tipo de versionado: AUTO (basado en commits), PATCH (x.x.X), MINOR (x.X.x), MAJOR (X.x.x)'
+        )
+        string(
+            name: 'CUSTOM_VERSION',
+            defaultValue: '',
+            description: 'Versión personalizada (opcional, formato: x.y.z)'
+        )
+        booleanParam(
+            name: 'SKIP_VERSION_BUMP',
+            defaultValue: false,
+            description: 'Saltar incremento de versión (usar versión actual)'
+        )
         booleanParam(
             name: 'GENERATE_RELEASE_NOTES',
             defaultValue: true,
@@ -27,29 +42,75 @@ pipeline {
         )
     }
 
-   stages {
+    environment {
+        DOCKERHUB_USER = 'juanmadrid09'
+        DOCKER_CREDENTIALS_ID = 'password'
+        SERVICES = 'api-gateway cloud-config favourite-service order-service payment-service product-service proxy-client service-discovery shipping-service user-service locust'
+        K8S_NAMESPACE = 'ecommerce'
+        KUBECONFIG = 'C:\\Users\\ACER\\.kube\\config'
+        // Semantic versioning variables
+        VERSION_FILE = 'version.txt'
+    }
 
-           stage('Init') {
-               steps {
-                   script {
-                       def profileConfig = [
-                           master : ['prod', '-prod'],
-                           release: ['stage', '-stage']
-                       ]
-                       def config = profileConfig.get(env.BRANCH_NAME, ['dev', '-dev'])
+    stages {
+        stage('Version Management') {
+            steps {
+                script {
+                    // Get current version
+                    def currentVersion = getCurrentVersion()
+                    echo "📦 Current version: ${currentVersion}"
 
-                       env.SPRING_PROFILES_ACTIVE = config[0]
-                       env.IMAGE_TAG = config[0]
-                       env.DEPLOYMENT_SUFFIX = config[1]
+                    // Calculate new version
+                    if (params.CUSTOM_VERSION) {
+                        env.NEW_VERSION = params.CUSTOM_VERSION
+                        echo "🎯 Using custom version: ${env.NEW_VERSION}"
+                    } else if (params.SKIP_VERSION_BUMP) {
+                        env.NEW_VERSION = currentVersion
+                        echo "⏭️ Skipping version bump, using current: ${env.NEW_VERSION}"
+                    } else {
+                        env.NEW_VERSION = calculateNextVersion(currentVersion, params.VERSION_TYPE)
+                        echo "📈 New version calculated: ${env.NEW_VERSION}"
+                    }
 
-                       echo "📦 Branch: ${env.BRANCH_NAME}"
-                       echo "🌱 Spring profile: ${env.SPRING_PROFILES_ACTIVE}"
-                       echo "🏷️ Image tag: ${env.IMAGE_TAG}"
-                       echo "📂 Deployment suffix: ${env.DEPLOYMENT_SUFFIX}"
+                    // Validate version format
+                    if (!env.NEW_VERSION.matches(/^\d+\.\d+\.\d+$/)) {
+                        error("❌ Invalid version format: ${env.NEW_VERSION}. Must be x.y.z")
+                    }
 
-                   }
-               }
-           }
+                    // Create version tags
+                    env.VERSION_TAG = "v${env.NEW_VERSION}"
+                    env.BUILD_TAG = "${env.NEW_VERSION}-${env.BUILD_NUMBER}"
+                    env.DOCKER_TAG = "${env.BRANCH_NAME == 'master' ? env.NEW_VERSION : env.BUILD_TAG}"
+
+                    // Update version files
+                    if (!params.SKIP_VERSION_BUMP) {
+                        updateVersionFiles(env.NEW_VERSION)
+                    }
+                }
+            }
+        }
+
+        stage('Init') {
+            steps {
+                script {
+                    def profileConfig = [
+                        master : ['prod', '-prod'],
+                        release: ['stage', '-stage']
+                    ]
+                    def config = profileConfig.get(env.BRANCH_NAME, ['dev', '-dev'])
+
+                    env.SPRING_PROFILES_ACTIVE = config[0]
+                    env.IMAGE_TAG = config[0]
+                    env.DEPLOYMENT_SUFFIX = config[1]
+
+                    echo "📦 Branch: ${env.BRANCH_NAME}"
+                    echo "🌱 Spring profile: ${env.SPRING_PROFILES_ACTIVE}"
+                    echo "🏷️ Image tag: ${env.IMAGE_TAG}"
+                    echo "📂 Deployment suffix: ${env.DEPLOYMENT_SUFFIX}"
+                    echo "📈 Version: ${env.NEW_VERSION}"
+                }
+            }
+        }
 
         stage('Ensure Namespace') {
             steps {
@@ -76,298 +137,7 @@ pipeline {
             }
         }
 
-        stage('Build & Package') {
-                  when { anyOf { branch 'master'; branch 'stage' ; branch 'dev'} }
-                  steps {
-                      bat "mvn clean package -DskipTests"
-                         }
-                  }
-
-        stage('Build & Push Docker Images') {
-               when { anyOf { branch 'master'; branch 'stage' ; branch 'dev'} }
-              steps {
-                  withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'password')]) {
-                      bat "docker login -u ${DOCKERHUB_USER} -p ${password}"
-
-                      script {
-                          SERVICES.split().each { service ->
-                              bat "docker build -t ${DOCKERHUB_USER}/${service}:${IMAGE_TAG} .\\${service}"
-                              bat "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
-                          }
-                      }
-                  }
-              }
-          }
-
-
-         stage('Unit Tests') {
-                     when { anyOf { branch 'dev'; } }
-                    steps {
-                        script {
-                            ['user-service', 'product-service', 'payment-service'].each {
-                                bat "mvn test -pl ${it}"
-                            }
-                        }
-                    }
-                }
-
-
-        stage('Integration Tests') {
-                    when { anyOf { branch 'stage'; } }
-                    steps {
-                        script {
-                            ['user-service', 'product-service'].each {
-                                bat "mvn verify -pl ${it}"
-                            }
-                        }
-                    }
-                }
-
-         stage('E2E Tests') {
-                    when { anyOf { branch 'stage'; } }
-                    steps {
-                        bat "mvn verify -pl e2e-tests"
-                    }
-                }
-
-
-     stage('Start containers for testing') {
-              when { anyOf { branch 'stage'; } }
-         steps {
-             script {
-                 powershell '''
-                  # Function to wait for a service to be healthy
-                 function Wait-ForHealthCheck {
-                     param(
-                         [string]$Url,
-                         [string]$ServiceName,
-                         [int]$TimeoutSeconds = 300
-                     )
-
-                     Write-Host "⌛ Waiting for $ServiceName..." -ForegroundColor Yellow
-                     $startTime = Get-Date
-
-                     do {
-                         try {
-                             $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
-                             if ($response.status -eq "UP") {
-                                  Write-Host "✅ $ServiceName is healthy!" -ForegroundColor Green
-                                 return $true
-                             }
-                         }
-                         catch {
-                                        # Retry until successful
-                         }
-
-                         Start-Sleep -Seconds 5
-                         $elapsed = (Get-Date) - $startTime
-
-                         if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
-                             Write-Host "❌ Timeout waiting for $ServiceName" -ForegroundColor Red
-                             return $false
-                         }
-
-                           Write-Host "⌛ Waiting for $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
-                     } while ($true)
-                 }
-
-                  # Function to wait for health check with complex JSON
-                 function Wait-ForHealthCheckWithJq {
-                     param(
-                         [string]$Url,
-                         [string]$ServiceName,
-                         [int]$TimeoutSeconds = 300
-                     )
-
-                     Write-Host "⌛ Waiting for $ServiceName..." -ForegroundColor Yellow
-                     $startTime = Get-Date
-
-                     do {
-                         try {
-                             $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
-                             if ($response.status -eq "UP") {
-                                  Write-Host "✅ $ServiceName is healthy!" -ForegroundColor Green
-                                 return $true
-                             }
-                         }
-                         catch {
-                                 # Retry until successful
-                         }
-
-                         Start-Sleep -Seconds 5
-                         $elapsed = (Get-Date) - $startTime
-
-                         if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
-                              Write-Host "❌ Timeout waiting for $ServiceName" -ForegroundColor Red
-                             return $false
-                         }
-
-                          Write-Host "⌛ Waiting for $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
-                     } while ($true)
-                 }
-
-                 try {
-                       # create Docker network if it doesn't exist
-                     Write-Host "🌐 Creating Docker network..." -ForegroundColor Cyan
-                     docker network create ecommerce-test 2>$null
-                     if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
-                         throw "Error creating Docker network"
-                     }
-
-                     # 1. ZIPKIN
-                      Write-Host "🚀 Starting ZIPKIN..." -ForegroundColor Cyan
-                     docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
-                      if ($LASTEXITCODE -ne 0) { throw "Error starting Zipkin" }
-
-                     # 2. EUREKA (Service Discovery)
-                      Write-Host "🚀 Starting EUREKA..." -ForegroundColor Cyan
-                     docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         juanmadrid09/service-discovery:${env:IMAGE_TAG}
-                       if ($LASTEXITCODE -ne 0) { throw "Error starting Eureka" }
-
-
-                     if (!(Wait-ForHealthCheck -Url "http://localhost:8761/actuator/health" -ServiceName "EUREKA")) {
-                         throw "Eureka could not be started correctly"
-                     }
-
-                     # 3. CLOUD-CONFIG
-                     Write-Host "🚀 Starting CLOUD-CONFIG..." -ForegroundColor Cyan
-                     docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ `
-                         -e EUREKA_INSTANCE=cloud-config-container `
-                         juanmadrid09/cloud-config:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Cloud Config" }
-
-                     if (!(Wait-ForHealthCheck -Url "http://localhost:9296/actuator/health" -ServiceName "CLOUD-CONFIG")) {
-                         throw "CLOUD-CONFIG could not be started correctly"
-                     }
-
-                     # 4. ORDER-SERVICE
-                     Write-Host "🚀 Starting ORDER-SERVICE..." -ForegroundColor Cyan
-                     docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=order-service-container `
-                        juanmadrid09/order-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Order Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8300/order-service/actuator/health" -ServiceName "ORDER-SERVICE")) {
-                         throw "ORDER-SERVICE could not be started correctly"
-                     }
-
-                     # 5. PAYMENT-SERVICE
-                     Write-Host "🚀 Starting PAYMENT..." -ForegroundColor Cyan
-                     docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=payment-service-container `
-                         juanmadrid09/payment-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Payment Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8400/payment-service/actuator/health" -ServiceName "PAYMENT-SERVICE")) {
-                         throw "PAYMENT-SERVICE could not be started correctly"
-                     }
-
-                     # 6. PRODUCT-SERVICE
-                     Write-Host "🚀 Starting PRODUCT..." -ForegroundColor Cyan
-                     docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=product-service-container `
-                         juanmadrid09/product-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Product Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8500/product-service/actuator/health" -ServiceName "PRODUCT-SERVICE")) {
-                         throw "PRODUCT-SERVICE could not be started correctly"
-                     }
-
-                     # 7. SHIPPING-SERVICE
-                     Write-Host "🚀 Starting SHIPPING..." -ForegroundColor Cyan
-                     docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=shipping-service-container `
-                        juanmadrid09/shipping-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Shipping Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8600/shipping-service/actuator/health" -ServiceName "SHIPPING-SERVICE")) {
-                         throw "SHIPPING-SERVICE could not be started correctly"
-                     }
-
-                     # 8. USER-SERVICE
-                     Write-Host "🚀 Starting USER..." -ForegroundColor Cyan
-                     docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=user-service-container `
-                         juanmadrid09/user-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting User Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8700/user-service/actuator/health" -ServiceName "USER-SERVICE")) {
-                         throw "USER-SERVICE could not be started correctly"
-                     }
-
-                     # 9. FAVOURITE-SERVICE
-                     Write-Host "🚀 Starting FAVOURITE..." -ForegroundColor Cyan
-                     docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=favourite-service-container `
-                         juanmadrid09/favourite-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Favourite Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8800/favourite-service/actuator/health" -ServiceName "FAVOURITE-SERVICE")) {
-                         throw "FAVOURITE-SERVICE could not be started correctly"
-                     }
-
-                     Write-Host "✅ All containers are up and healthy." -ForegroundColor Green
-                 }
-                 catch {
-                     Write-Host "❌ Error: $_" -ForegroundColor Red
-                     Write-Host "🧹 Cleaning up containers..." -ForegroundColor Yellow
-
-                     # Cleanup in case of error
-                     $containers = @(
-                         "favourite-service-container",
-                         "user-service-container",
-                         "shipping-service-container",
-                         "product-service-container",
-                         "payment-service-container",
-                         "order-service-container",
-                         "cloud-config-container",
-                         "service-discovery-container",
-                         "zipkin-container"
-                     )
-
-                     foreach ($container in $containers) {
-                         docker stop $container 2>$null
-                         docker rm $container 2>$null
-                     }
-
-                     docker network rm ecommerce-test 2>$null
-                     throw "Failed to start containers"
-                 }
-                 '''
-             }
-         }
-     }
-
+/*
         stage('Run Load Tests with Locust') {
             when { anyOf { branch 'stage'; } }
             steps {
@@ -466,41 +236,39 @@ pipeline {
             }
         }
 
+        stage('Stop and remove containers') {
+            when { anyOf { branch 'stage'; } }
+            steps {
+                script {
+                    bat """
+                    echo 🛑 Stopping and removing containers...
 
-       stage('Stop and remove containers') {
-                 when { anyOf { branch 'stage'; } }
-           steps {
-               script {
-                   bat """
-                   echo 🛑 Stopping and removing containers...
+                    docker rm -f locust || exit 0
+                    docker rm -f favourite-service-container || exit 0
+                    docker rm -f user-service-container || exit 0
+                    docker rm -f shipping-service-container || exit 0
+                    docker rm -f product-service-container || exit 0
+                    docker rm -f payment-service-container || exit 0
+                    docker rm -f order-service-container || exit 0
+                    docker rm -f cloud-config-container || exit 0
+                    docker rm -f service-discovery-container || exit 0
+                    docker rm -f zipkin-container || exit 0
 
-                   docker rm -f locust || exit 0
-                   docker rm -f favourite-service-container || exit 0
-                   docker rm -f user-service-container || exit 0
-                   docker rm -f shipping-service-container || exit 0
-                   docker rm -f product-service-container || exit 0
-                   docker rm -f payment-service-container || exit 0
-                   docker rm -f order-service-container || exit 0
-                   docker rm -f cloud-config-container || exit 0
-                   docker rm -f service-discovery-container || exit 0
-                   docker rm -f zipkin-container || exit 0
-
-                   echo 🧹 All containers removed
-                   """
-               }
-           }
-       }
-
+                    echo 🧹 All containers removed
+                    """
+                }
+            }
+        }
 
         stage('Deploy Common Config') {
-             when { anyOf { branch 'master'; } }
+            when { anyOf { branch 'master'; } }
             steps {
                 bat "kubectl apply -f k8s\\common-config.yaml -n ${K8S_NAMESPACE}"
             }
         }
 
         stage('Deploy Core Services') {
-              when { anyOf { branch 'master'; } }
+            when { anyOf { branch 'master'; } }
             steps {
                 bat "kubectl apply -f k8s\\zipkin -n ${K8S_NAMESPACE}"
                 bat "kubectl rollout status deployment/zipkin -n ${K8S_NAMESPACE} --timeout=200s"
@@ -515,21 +283,23 @@ pipeline {
             }
         }
 
-         stage('Deploy Microservices') {
-             when { anyOf { branch 'master'; } }
-             steps {
-                 script {
-                     def appServices = ['user-service']
-                     echo "👻"
-                     appServices.each { svc ->
-                         bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
-                         bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-                         bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
-                         bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=400s"
-                     }
-                 }
-             }
-         }
+        stage('Deploy Microservices') {
+            when { anyOf { branch 'master'; } }
+            steps {
+                script {
+                    def appServices = ['user-service']
+                    echo "👻"
+                    appServices.each { svc ->
+                        bat "kubectl apply -f k8s\\${svc} -n ${K8S_NAMESPACE}"
+                        bat "kubectl set image deployment/${svc} ${svc}=${DOCKERHUB_USER}/${svc}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
+                        bat "kubectl set env deployment/${svc} SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE} -n ${K8S_NAMESPACE}"
+                        bat "kubectl rollout status deployment/${svc} -n ${K8S_NAMESPACE} --timeout=400s"
+                    }
+                }
+            }
+        }
+
+        */
 
         stage('Generate Release Notes') {
             when {
@@ -549,6 +319,7 @@ pipeline {
             script {
                 echo "✅ Pipeline completed successfully for ${env.BRANCH_NAME} branch."
                 echo "📊 Environment: ${env.SPRING_PROFILE}"
+                echo "📈 Version: ${env.NEW_VERSION}"
 
                 if (env.BRANCH_NAME == 'master') {
                     echo "🚀 Production deployment completed successfully!"
@@ -570,7 +341,6 @@ pipeline {
                 echo "❌ Pipeline failed for ${env.BRANCH_NAME} branch."
                 echo "🔍 Check the logs for details."
                 echo "📧 Notify the development team about the failure."
-
             }
         }
         unstable {
@@ -585,6 +355,8 @@ pipeline {
                 if (params.GENERATE_RELEASE_NOTES) {
                     archiveArtifacts artifacts: 'release-notes-*.md', allowEmptyArchive: true
                 }
+                // Archive version file
+                archiveArtifacts artifacts: env.VERSION_FILE, fingerprint: true
             }
         }
     }
@@ -729,4 +501,72 @@ def shouldRunIntegrationTests() {
 def shouldRunE2ETests() {
     return env.BRANCH_NAME == 'master' || env.BRANCH_NAME.startsWith('feature/') ||
            (env.BRANCH_NAME != 'master' && env.BRANCH_NAME != 'release')
+}
+
+// Version management functions
+def getCurrentVersion() {
+    def version = bat(returnStdout: true, script: """
+        if exist ${env.VERSION_FILE} (
+            type ${env.VERSION_FILE}
+        ) else (
+            mvn help:evaluate -Dexpression=project.version -q -DforceStdout
+        )
+    """).trim()
+    
+    return version.replaceAll('-SNAPSHOT', '')
+}
+
+def calculateNextVersion(currentVersion, versionType) {
+    def (major, minor, patch) = currentVersion.tokenize('.')
+    
+    switch(versionType) {
+        case 'AUTO':
+            return calculateAutoVersion(currentVersion)
+        case 'PATCH':
+            return "${major}.${minor}.${(patch as int) + 1}"
+        case 'MINOR':
+            return "${major}.${(minor as int) + 1}.0"
+        case 'MAJOR':
+            return "${(major as int) + 1}.0.0"
+        default:
+            return calculateAutoVersion(currentVersion)
+    }
+}
+
+def calculateAutoVersion(currentVersion) {
+    // Get commit messages since last tag
+    def commitMessages = bat(returnStdout: true, script: """
+        git log $(git describe --tags --abbrev=0 2>nul || echo HEAD~10)..HEAD --pretty=format:"%%s" || echo ""
+    """).trim()
+    
+    def (major, minor, patch) = currentVersion.tokenize('.')
+    
+    // Determine version bump based on commit messages
+    if (commitMessages.contains('BREAKING CHANGE') || commitMessages.contains('!:')) {
+        return "${(major as int) + 1}.0.0"
+    } else if (commitMessages.contains('feat:') || commitMessages.contains('feature:')) {
+        return "${major}.${(minor as int) + 1}.0"
+    } else {
+        return "${major}.${minor}.${(patch as int) + 1}"
+    }
+}
+
+def updateVersionFiles(version) {
+    // Update version.txt
+    writeFile file: env.VERSION_FILE, text: version
+    
+    // Update main pom.xml
+    bat """
+        mvn versions:set -DnewVersion=${version} -DgenerateBackupPoms=false
+        mvn versions:commit
+    """
+    
+    // Update microservices pom files
+    bat """
+        for /r %%f in (pom.xml) do (
+            if not "%%~dpf"=="%cd%\\target\\" (
+                mvn versions:set -DnewVersion=${version} -DgenerateBackupPoms=false -f "%%f"
+            )
+        )
+    """
 }
