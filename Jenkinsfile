@@ -133,7 +133,7 @@ pipeline {
 
 */
       stage('Start containers for testing') {
-              when { anyOf { branch 'stage'; } }
+              when { anyOf {branch 'master'; branch 'stage' } }
          steps {
              script {
                  powershell '''
