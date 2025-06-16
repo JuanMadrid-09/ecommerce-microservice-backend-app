@@ -76,6 +76,7 @@ pipeline {
             }
         }
 
+/*
         stage('Build & Package') {
                   when { anyOf { branch 'master'; branch 'stage' ; branch 'dev'} }
                   steps {
@@ -130,243 +131,138 @@ pipeline {
                     }
                 }
 
-
-     stage('Start containers for testing') {
+*/
+      stage('Start containers for testing') {
               when { anyOf { branch 'stage'; } }
          steps {
              script {
                  powershell '''
-                  # Function to wait for a service to be healthy
-                 function Wait-ForHealthCheck {
-                     param(
-                         [string]$Url,
-                         [string]$ServiceName,
-                         [int]$TimeoutSeconds = 300
-                     )
+                # Function to wait for a service to be healthy
+                    function Wait-ForHealthCheck {
+                        param(
+                            [string]$Url,
+                            [string]$ServiceName,
+                            [int]$TimeoutSeconds = 300
+                        )
+                        Write-Host "⌛ Waiting for $ServiceName..." -ForegroundColor Yellow
+                        $startTime = Get-Date
+                        do {
+                            try {
+                                $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
+                                if ($response.status -eq "UP") {
+                                    Write-Host "✅ $ServiceName is healthy!" -ForegroundColor Green
+                                    return $true
+                                }
+                            } catch {}
+                            Start-Sleep -Seconds 5
+                            $elapsed = (Get-Date) - $startTime
+                            if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
+                                Write-Host "❌ Timeout waiting for $ServiceName" -ForegroundColor Red
+                                return $false
+                            }
+                            Write-Host "⌛ Waiting for $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
+                        } while ($true)
+                    }
 
-                     Write-Host "⌛ Waiting for $ServiceName..." -ForegroundColor Yellow
-                     $startTime = Get-Date
+                    try {
+                        # create Docker network if it doesn't exist
+                        Write-Host "🌐 Creating Docker network..." -ForegroundColor Cyan
+                        docker network create ecommerce-test 2>$null
+                        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
+                            throw "Error creating Docker network"
+                        }
 
-                     do {
-                         try {
-                             $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
-                             if ($response.status -eq "UP") {
-                                  Write-Host "✅ $ServiceName is healthy!" -ForegroundColor Green
-                                 return $true
-                             }
-                         }
-                         catch {
-                                        # Retry until successful
-                         }
+                        # 1. ZIPKIN (opcional)
+                        Write-Host "🚀 Starting ZIPKIN..." -ForegroundColor Cyan
+                        docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
+                        if ($LASTEXITCODE -ne 0) { throw "Error starting Zipkin" }
 
-                         Start-Sleep -Seconds 5
-                         $elapsed = (Get-Date) - $startTime
+                        # 2. EUREKA (Service Discovery)
+                        Write-Host "🚀 Starting EUREKA..." -ForegroundColor Cyan
+                        docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 `
+                            -e SPRING_PROFILES_ACTIVE=dev `
+                            -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                            juanmadrid09/service-discovery:${env:IMAGE_TAG}
+                        if ($LASTEXITCODE -ne 0) { throw "Error starting Eureka" }
 
-                         if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
-                             Write-Host "❌ Timeout waiting for $ServiceName" -ForegroundColor Red
-                             return $false
-                         }
+                        if (!(Wait-ForHealthCheck -Url "http://localhost:8761/actuator/health" -ServiceName "EUREKA")) {
+                            throw "Eureka could not be started correctly"
+                        }
 
-                           Write-Host "⌛ Waiting for $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
-                     } while ($true)
-                 }
+                        # 3. CLOUD-CONFIG
+                        Write-Host "🚀 Starting CLOUD-CONFIG..." -ForegroundColor Cyan
+                        docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 `
+                            -e SPRING_PROFILES_ACTIVE=dev `
+                            -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                            -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ `
+                            -e EUREKA_INSTANCE=cloud-config-container `
+                            juanmadrid09/cloud-config:${env:IMAGE_TAG}
+                        if ($LASTEXITCODE -ne 0) { throw "Error starting Cloud Config" }
 
-                  # Function to wait for health check with complex JSON
-                 function Wait-ForHealthCheckWithJq {
-                     param(
-                         [string]$Url,
-                         [string]$ServiceName,
-                         [int]$TimeoutSeconds = 300
-                     )
+                        if (!(Wait-ForHealthCheck -Url "http://localhost:9296/actuator/health" -ServiceName "CLOUD-CONFIG")) {
+                            throw "CLOUD-CONFIG could not be started correctly"
+                        }
 
-                     Write-Host "⌛ Waiting for $ServiceName..." -ForegroundColor Yellow
-                     $startTime = Get-Date
+                        # 4. PRODUCT-SERVICE
+                        Write-Host "🚀 Starting PRODUCT..." -ForegroundColor Cyan
+                        docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 `
+                            -e SPRING_PROFILES_ACTIVE=dev `
+                            -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                            -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                            -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                            -e EUREKA_INSTANCE=product-service-container `
+                            juanmadrid09/product-service:${env:IMAGE_TAG}
+                        if ($LASTEXITCODE -ne 0) { throw "Error starting Product Service" }
 
-                     do {
-                         try {
-                             $response = Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
-                             if ($response.status -eq "UP") {
-                                  Write-Host "✅ $ServiceName is healthy!" -ForegroundColor Green
-                                 return $true
-                             }
-                         }
-                         catch {
-                                 # Retry until successful
-                         }
+                        if (!(Wait-ForHealthCheck -Url "http://localhost:8500/product-service/actuator/health" -ServiceName "PRODUCT-SERVICE")) {
+                            throw "PRODUCT-SERVICE could not be started correctly"
+                        }
 
-                         Start-Sleep -Seconds 5
-                         $elapsed = (Get-Date) - $startTime
+                        # 5. USER-SERVICE (solo si quieres probar Circuit Breaker real)
+                        Write-Host "🚀 Starting USER..." -ForegroundColor Cyan
+                        docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 `
+                            -e SPRING_PROFILES_ACTIVE=dev `
+                            -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
+                            -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
+                            -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
+                            -e EUREKA_INSTANCE=user-service-container `
+                            juanmadrid09/user-service:${env:IMAGE_TAG}
+                        if ($LASTEXITCODE -ne 0) { throw "Error starting User Service" }
 
-                         if ($elapsed.TotalSeconds -gt $TimeoutSeconds) {
-                              Write-Host "❌ Timeout waiting for $ServiceName" -ForegroundColor Red
-                             return $false
-                         }
+                        if (!(Wait-ForHealthCheck -Url "http://localhost:8700/user-service/actuator/health" -ServiceName "USER-SERVICE")) {
+                            throw "USER-SERVICE could not be started correctly"
+                        }
 
-                          Write-Host "⌛ Waiting for $ServiceName... ($([int]$elapsed.TotalSeconds)s)" -ForegroundColor Yellow
-                     } while ($true)
-                 }
+                        Write-Host "✅ All selected containers are up and healthy." -ForegroundColor Green
+                    }
+                    catch {
+                        Write-Host "❌ Error: $_" -ForegroundColor Red
+                        Write-Host "🧹 Cleaning up containers..." -ForegroundColor Yellow
 
-                 try {
-                       # create Docker network if it doesn't exist
-                     Write-Host "🌐 Creating Docker network..." -ForegroundColor Cyan
-                     docker network create ecommerce-test 2>$null
-                     if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
-                         throw "Error creating Docker network"
-                     }
+                        # Cleanup in case of error
+                        $containers = @(
+                            "user-service-container",
+                            "product-service-container",
+                            "cloud-config-container",
+                            "service-discovery-container",
+                            "zipkin-container"
+                        )
 
-                     # 1. ZIPKIN
-                      Write-Host "🚀 Starting ZIPKIN..." -ForegroundColor Cyan
-                     docker run -d --name zipkin-container --network ecommerce-test -p 9411:9411 openzipkin/zipkin
-                      if ($LASTEXITCODE -ne 0) { throw "Error starting Zipkin" }
+                        foreach ($container in $containers) {
+                            docker stop $container 2>$null
+                            docker rm $container 2>$null
+                        }
 
-                     # 2. EUREKA (Service Discovery)
-                      Write-Host "🚀 Starting EUREKA..." -ForegroundColor Cyan
-                     docker run -d --name service-discovery-container --network ecommerce-test -p 8761:8761 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         juanmadrid09/service-discovery:${env:IMAGE_TAG}
-                       if ($LASTEXITCODE -ne 0) { throw "Error starting Eureka" }
-
-
-                     if (!(Wait-ForHealthCheck -Url "http://localhost:8761/actuator/health" -ServiceName "EUREKA")) {
-                         throw "Eureka could not be started correctly"
-                     }
-
-                     # 3. CLOUD-CONFIG
-                     Write-Host "🚀 Starting CLOUD-CONFIG..." -ForegroundColor Cyan
-                     docker run -d --name cloud-config-container --network ecommerce-test -p 9296:9296 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery-container:8761/eureka/ `
-                         -e EUREKA_INSTANCE=cloud-config-container `
-                         juanmadrid09/cloud-config:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Cloud Config" }
-
-                     if (!(Wait-ForHealthCheck -Url "http://localhost:9296/actuator/health" -ServiceName "CLOUD-CONFIG")) {
-                         throw "CLOUD-CONFIG could not be started correctly"
-                     }
-
-                     # 4. ORDER-SERVICE
-                     Write-Host "🚀 Starting ORDER-SERVICE..." -ForegroundColor Cyan
-                     docker run -d --name order-service-container --network ecommerce-test -p 8300:8300 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=order-service-container `
-                        juanmadrid09/order-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Order Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8300/order-service/actuator/health" -ServiceName "ORDER-SERVICE")) {
-                         throw "ORDER-SERVICE could not be started correctly"
-                     }
-
-                     # 5. PAYMENT-SERVICE
-                     Write-Host "🚀 Starting PAYMENT..." -ForegroundColor Cyan
-                     docker run -d --name payment-service-container --network ecommerce-test -p 8400:8400 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=payment-service-container `
-                         juanmadrid09/payment-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Payment Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8400/payment-service/actuator/health" -ServiceName "PAYMENT-SERVICE")) {
-                         throw "PAYMENT-SERVICE could not be started correctly"
-                     }
-
-                     # 6. PRODUCT-SERVICE
-                     Write-Host "🚀 Starting PRODUCT..." -ForegroundColor Cyan
-                     docker run -d --name product-service-container --network ecommerce-test -p 8500:8500 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=product-service-container `
-                         juanmadrid09/product-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Product Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8500/product-service/actuator/health" -ServiceName "PRODUCT-SERVICE")) {
-                         throw "PRODUCT-SERVICE could not be started correctly"
-                     }
-
-                     # 7. SHIPPING-SERVICE
-                     Write-Host "🚀 Starting SHIPPING..." -ForegroundColor Cyan
-                     docker run -d --name shipping-service-container --network ecommerce-test -p 8600:8600 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=shipping-service-container `
-                        juanmadrid09/shipping-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Shipping Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8600/shipping-service/actuator/health" -ServiceName "SHIPPING-SERVICE")) {
-                         throw "SHIPPING-SERVICE could not be started correctly"
-                     }
-
-                     # 8. USER-SERVICE
-                     Write-Host "🚀 Starting USER..." -ForegroundColor Cyan
-                     docker run -d --name user-service-container --network ecommerce-test -p 8700:8700 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=user-service-container `
-                         juanmadrid09/user-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting User Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8700/user-service/actuator/health" -ServiceName "USER-SERVICE")) {
-                         throw "USER-SERVICE could not be started correctly"
-                     }
-
-                     # 9. FAVOURITE-SERVICE
-                     Write-Host "🚀 Starting FAVOURITE..." -ForegroundColor Cyan
-                     docker run -d --name favourite-service-container --network ecommerce-test -p 8800:8800 `
-                         -e SPRING_PROFILES_ACTIVE=dev `
-                         -e SPRING_ZIPKIN_BASE_URL=http://zipkin-container:9411 `
-                         -e SPRING_CONFIG_IMPORT=optional:configserver:http://cloud-config-container:9296 `
-                         -e EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-discovery-container:8761/eureka `
-                         -e EUREKA_INSTANCE=favourite-service-container `
-                         juanmadrid09/favourite-service:${env:IMAGE_TAG}
-                     if ($LASTEXITCODE -ne 0) { throw "Error starting Favourite Service" }
-
-                     if (!(Wait-ForHealthCheckWithJq -Url "http://localhost:8800/favourite-service/actuator/health" -ServiceName "FAVOURITE-SERVICE")) {
-                         throw "FAVOURITE-SERVICE could not be started correctly"
-                     }
-
-                     Write-Host "✅ All containers are up and healthy." -ForegroundColor Green
-                 }
-                 catch {
-                     Write-Host "❌ Error: $_" -ForegroundColor Red
-                     Write-Host "🧹 Cleaning up containers..." -ForegroundColor Yellow
-
-                     # Cleanup in case of error
-                     $containers = @(
-                         "favourite-service-container",
-                         "user-service-container",
-                         "shipping-service-container",
-                         "product-service-container",
-                         "payment-service-container",
-                         "order-service-container",
-                         "cloud-config-container",
-                         "service-discovery-container",
-                         "zipkin-container"
-                     )
-
-                     foreach ($container in $containers) {
-                         docker stop $container 2>$null
-                         docker rm $container 2>$null
-                     }
-
-                     docker network rm ecommerce-test 2>$null
-                     throw "Failed to start containers"
-                 }
+                        docker network rm ecommerce-test 2>$null
+                        throw "Failed to start containers"
+                    }
                  '''
              }
          }
      }
+
+
+/*
 
         stage('Run Load Tests with Locust') {
             when { anyOf { branch 'stage'; } }
@@ -530,6 +426,8 @@ pipeline {
                  }
              }
          }
+
+         */
 
         stage('Generate Release Notes') {
             when {
